@@ -1,34 +1,40 @@
+using Microsoft.SemanticKernel;
+using VaultMind.API.Endpoints;
+using VaultMind.API.Services;
+using VaultMind.API.Interfaces;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ── Configuration ──
+var config = builder.Configuration;
 
-var app = builder.Build();
+// ── Services ──
+builder.Services.AddSingleton<ISseService, SseService>();
+builder.Services.AddKernel();
+builder.Services.AddOpenAIChatCompletion(
+    modelId: config["OpenAI:ModelId"] ?? "gpt-4o-mini",
+    apiKey: config["OpenAI:ApiKey"] ?? throw new InvalidOperationException(
+        "OpenAI:ApiKey is required. Set it in appsettings.json or environment variables.")
+);
 
-// Configure the HTTP request pipeline.
-
-app.UseHttpsRedirection();
-
-var summaries = new[]
+builder.Services.AddCors(options =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
+    options.AddPolicy("AllowDashboard", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
 });
 
-app.Run();
+// ── Build ──
+var app = builder.Build();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+// ── Middleware ──
+app.UseCors("AllowDashboard");
+
+// ── Map Endpoints ──
+app.MapHealthEndpoints();
+app.MapChatEndpoints();
+
+app.Run();

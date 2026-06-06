@@ -1,6 +1,32 @@
-@VaultMind.API_HostAddress = http://localhost:5152
+@host = http://localhost:5139
 
-GET {{VaultMind.API_HostAddress}}/weatherforecast/
+### ── Health Check ──
+GET {{host}}/api/health
 Accept: application/json
 
-###
+### ── Chat (SSE Streaming) ──
+POST {{host}}/api/chat
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "message": "What is VaultMind?"
+}
+
+### ── Chat — Ask about RAG ──
+POST {{host}}/api/chat
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "message": "Explain Retrieval-Augmented Generation in simple terms"
+}
+
+### ── Chat — Code question ──
+POST {{host}}/api/chat
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "message": "Write a C# function that reverses a string"
+}
