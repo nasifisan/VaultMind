@@ -1,0 +1,50 @@
+# ── .NET ──
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.vs/
+publish/
+
+# ── Node / React ──
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+
+# ── C++ ──
+build/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+CMakeFiles/
+CMakeCache.txt
+
+# ── IDE ──
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker ──
+docker-compose.override.yml
+
+# ── Secrets ──
+appsettings.Development.json
+*.pfx
+*.pem

@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  # ── C# .NET Backend API ──
+  api:
+    build:
+      context: ../src/VaultMind.API
+      dockerfile: ../../infra/Dockerfile.api
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      # - OpenAI__ApiKey=${OPENAI_API_KEY}
+    depends_on:
+      - redis
+      # - qdrant
+    networks:
+      - vaultmind-net
+
+  # ── Next.js Frontend Dashboard ──
+  dashboard:
+    build:
+      context: ../src/vaultmind-dashboard
+      dockerfile: ../../infra/Dockerfile.dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8080
+    depends_on:
+      - api
+    networks:
+      - vaultmind-net
+
+  # ── Redis (Semantic Caching) ──
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - vaultmind-net
+
+  # ── Qdrant (Vector Database) — Uncomment in Month 2 ──
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - qdrant-data:/qdrant/storage
+  #   networks:
+  #     - vaultmind-net
+
+volumes:
+  redis-data:
+  # qdrant-data:
+
+networks:
+  vaultmind-net:
+    driver: bridge
