@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# VaultMind Dashboard
 
-## Getting Started
+> Next.js 16 frontend for VaultMind — a multi-chat AI interface with real-time SSE streaming and persistent chat history.
 
-First, run the development server:
+## What This Project Does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+This is the user-facing dashboard that provides a ChatGPT-like experience connected to the VaultMind backend. It:
+
+1. Manages **multiple chat sessions** — create, switch, rename, and delete conversations
+2. **Streams AI responses** in real-time using Server-Sent Events from the .NET backend
+3. **Persists chat history** to `localStorage` — survives page reloads and browser restarts
+4. Monitors backend health with a **live status indicator** (Online / Offline / Thinking)
+
+## Tech Stack
+
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| Next.js | 16.2.7 | React framework with App Router |
+| React | 19.2.4 | UI library |
+| Tailwind CSS | v4 | Styling (`@theme inline` syntax) |
+| Geist Font | — | Typography via `next/font` |
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── page.js              # Main page — composes all components
+│   ├── layout.js            # Root layout, fonts, metadata, dark mode
+│   └── globals.css          # Tailwind v4 theme variables & animations
+│
+├── components/
+│   ├── Header.js            # Top bar: logo, sidebar toggle, status pill
+│   ├── Footer.js            # Bottom branding text
+│   ├── Sidebar.js           # Collapsible chat history panel
+│   ├── ChatWindow.js        # Message viewport & welcome/suggestions screen
+│   ├── ChatMessage.js       # Individual message bubble (user/assistant)
+│   ├── ChatInput.js         # Generic reusable text input with send button
+│   └── LoadingScreen.js     # Full-screen initialization spinner
+│
+├── hooks/
+│   └── useChatManager.js    # Custom hook: multi-chat state, localStorage, health polling
+│
+└── services/
+    └── chatService.js       # HTTP/SSE calls to backend (the only file that uses fetch)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Design Decisions
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+| Decision | Rationale |
+|----------|-----------|
+| **Single service file for API calls** | No component should call `fetch()` directly. All network logic is isolated in `chatService.js`. |
+| **Custom hook over state library** | `useChatManager` keeps all chat state logic in one place without adding Redux/Zustand dependencies. |
+| **`forwardRef` on ChatInput** | Allows `page.js` to programmatically focus the input after loading, chat switching, or stream completion. |
+| **`isLoaded` guard** | Prevents hydration mismatch — localStorage is only available client-side, so we show a loading spinner until state is ready. |
+| **Auto-naming chats** | The first user message (truncated to 30 chars) becomes the chat title automatically. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Create a `.env.local` file in the project root:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5139
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Running
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm install    # first time only
+npm run dev    # starts on http://localhost:3000
+```
 
-## Deploy on Vercel
+Make sure the [VaultMind.API](../VaultMind.API/) backend is running before using the chat.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Building for Production
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build
+npm start
+```
