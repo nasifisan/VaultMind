@@ -12,9 +12,9 @@ var config = builder.Configuration;
 builder.Services.AddSingleton<ISseService, SseService>();
 builder.Services.AddKernel();
 builder.Services.AddOpenAIChatCompletion(
-    modelId: config["OpenAI:ModelId"] ?? "gpt-4o-mini",
-    apiKey: config["OpenAI:ApiKey"] ?? throw new InvalidOperationException(
-        "OpenAI:ApiKey is required. Set it in appsettings.json or environment variables.")
+    modelId: config["AI:ModelId"] ?? "phi3",
+    apiKey: config["AI:ApiKey"] ?? "ollama",           // Ollama doesn't need a real key
+    endpoint: new Uri(config["AI:Endpoint"] ?? "http://localhost:11434/v1")
 );
 
 builder.Services.AddCors(options =>
