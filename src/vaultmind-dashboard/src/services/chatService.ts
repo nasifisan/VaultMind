@@ -2,13 +2,18 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5139";
 
 /**
  * Streams the chat completion from the backend SSE endpoint.
- * @param {string} message - The user's input message.
- * @param {function(string)} onToken - Callback when a new text token is received.
- * @param {function()} onDone - Callback when streaming finishes successfully.
- * @param {function(Error)} onError - Callback when an error occurs.
- * @returns {Promise<ReadableStreamReader>} - The reader, which can be used to cancel streaming.
+ * @param message - The user's input message.
+ * @param onToken - Callback when a new text token is received.
+ * @param onDone - Callback when streaming finishes successfully.
+ * @param onError - Callback when an error occurs.
+ * @returns The reader, which can be used to cancel streaming.
  */
-export async function streamChat(message, onToken, onDone, onError) {
+export async function streamChat(
+  message: string,
+  onToken: (token: string) => void,
+  onDone: () => void,
+  onError: (err: Error) => void
+): Promise<ReadableStreamDefaultReader<Uint8Array> | undefined> {
   try {
     const response = await fetch(`${API_URL}/api/chat`, {
       method: "POST",
@@ -20,7 +25,7 @@ export async function streamChat(message, onToken, onDone, onError) {
       throw new Error(`API error: ${response.status}`);
     }
 
-    const reader = response.body.getReader();
+    const reader = response.body!.getReader();
     const decoder = new TextDecoder();
 
     // Run async reading loop
@@ -51,36 +56,31 @@ export async function streamChat(message, onToken, onDone, onError) {
                 throw new Error(data.slice(8));
               }
 
-              // Normal token
-              // We want to pass the data raw (sometimes spaces/newlines matter, but C# SSE is formatted line-by-line)
-              // Wait, in standard page.js: const data = line.slice(6); (not trimmed)
-              // Let's do: line.slice(6) to preserve leading/trailing spaces for proper formatting
               const rawData = line.slice(6);
               onToken(rawData);
             }
           }
         }
       } catch (err) {
-        onError(err);
+        onError(err as Error);
       }
     })();
 
     return reader;
   } catch (err) {
-    onError(err);
+    onError(err as Error);
     throw err;
   }
 }
 
 /**
  * Checks the health of the backend API.
- * @returns {Promise<boolean>}
  */
-export async function checkHealth() {
+export async function checkHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${API_URL}/api/health`, { method: "GET" });
     return response.ok;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

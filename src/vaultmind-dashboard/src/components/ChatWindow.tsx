@@ -2,15 +2,16 @@
 
 import React, { useEffect, useRef } from "react";
 import ChatMessage from "./ChatMessage";
+import type { ChatWindowProps } from "../types";
 
-export default function ChatWindow({ messages, isStreaming, onSuggestionClick }) {
-  const messagesEndRef = useRef(null);
+const suggestions: string[] = [
+  "What can you do?",
+  "Explain RAG architecture",
+  "What is ONNX Runtime?",
+];
 
-  const suggestions = [
-    "What can you do?",
-    "Explain RAG architecture",
-    "What is ONNX Runtime?",
-  ];
+export default function ChatWindow({ messages, isStreaming, onSuggestionClick }: ChatWindowProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages list changes or streaming content updates
   useEffect(() => {

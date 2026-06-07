@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { SidebarProps } from "../types";
 
 export default function Sidebar({
   chats,
@@ -10,7 +11,7 @@ export default function Sidebar({
   onSelectChat,
   onNewChat,
   onDeleteChat,
-}) {
+}: SidebarProps) {
   return (
     <aside
       className={`fixed md:static inset-y-0 left-0 z-40 flex flex-col h-full bg-zinc-950 border-r border-border transition-all duration-300 ease-in-out ${
@@ -84,7 +85,7 @@ export default function Sidebar({
                   <span className="truncate">{chat.title}</span>
                 </div>
 
-                {/* Delete Button (visible on hover for active/inactive, or always on touch devices) */}
+                {/* Delete Button */}
                 <button
                   onClick={(e) => onDeleteChat(chat.id, e)}
                   disabled={isStreaming}

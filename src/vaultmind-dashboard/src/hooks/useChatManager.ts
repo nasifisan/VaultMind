@@ -2,17 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import { streamChat, checkHealth } from "../services/chatService";
+import type { Chat, ChatManager } from "../types";
 
-export default function useChatManager() {
-  const [chats, setChats] = useState([]);
-  const [activeChatId, setActiveChatId] = useState(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [input, setInput] = useState("");
-  const [isOnline, setIsOnline] = useState(true);
-  const [isLoaded, setIsLoaded] = useState(false);
+export default function useChatManager(): ChatManager {
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [input, setInput] = useState<string>("");
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
   // Keep a ref to the activeChatId so callbacks in streamChat always have the latest value
-  const activeChatIdRef = useRef(null);
+  const activeChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
@@ -22,12 +23,12 @@ export default function useChatManager() {
     const savedChats = localStorage.getItem("vaultmind_chats");
     const savedActiveId = localStorage.getItem("vaultmind_active_chat_id");
 
-    let initialChats = [];
-    let initialActiveId = null;
+    let initialChats: Chat[] = [];
+    let initialActiveId: string | null = null;
 
     if (savedChats) {
       try {
-        initialChats = JSON.parse(savedChats);
+        initialChats = JSON.parse(savedChats) as Chat[];
       } catch (e) {
         console.error("Failed to parse saved chats:", e);
         initialChats = [];
@@ -35,7 +36,7 @@ export default function useChatManager() {
     }
 
     if (initialChats.length === 0) {
-      const defaultChat = {
+      const defaultChat: Chat = {
         id: Date.now().toString(),
         title: "New Chat",
         messages: [],
@@ -79,19 +80,18 @@ export default function useChatManager() {
   }, []);
 
   // Get current active chat
-  const activeChat = chats.find((c) => c.id === activeChatId) || null;
+  const activeChat: Chat | null = chats.find((c) => c.id === activeChatId) || null;
   const activeMessages = activeChat ? activeChat.messages : [];
 
   // Create a new empty chat session
-  const createNewChat = () => {
+  const createNewChat = (): void => {
     if (isStreaming) return;
 
-    // Check if the current active chat is already empty. If so, just keep using it.
     if (activeChat && activeChat.messages.length === 0) {
       return;
     }
 
-    const newChat = {
+    const newChat: Chat = {
       id: Date.now().toString(),
       title: "New Chat",
       messages: [],
@@ -104,23 +104,23 @@ export default function useChatManager() {
   };
 
   // Switch to another chat session
-  const selectChat = (id) => {
+  const selectChat = (id: string): void => {
     if (isStreaming) return;
     setActiveChatId(id);
     setInput("");
   };
 
   // Delete a chat session
-  const deleteChat = (id, e) => {
+  const deleteChat = (id: string, e?: React.MouseEvent): void => {
     if (e) {
-      e.stopPropagation(); // Prevent selecting the chat when clicking delete
+      e.stopPropagation();
     }
     if (isStreaming) return;
 
     const remainingChats = chats.filter((c) => c.id !== id);
 
     if (remainingChats.length === 0) {
-      const defaultChat = {
+      const defaultChat: Chat = {
         id: Date.now().toString(),
         title: "New Chat",
         messages: [],
@@ -130,7 +130,6 @@ export default function useChatManager() {
       setActiveChatId(defaultChat.id);
     } else {
       setChats(remainingChats);
-      // If we deleted the active chat, switch to the first remaining one
       if (activeChatId === id) {
         setActiveChatId(remainingChats[0].id);
       }
@@ -138,19 +137,17 @@ export default function useChatManager() {
   };
 
   // Send a message
-  const sendMessage = async (messageText) => {
+  const sendMessage = async (messageText?: string): Promise<void> => {
     const textToSend = typeof messageText === "string" ? messageText : input;
     const trimmed = textToSend.trim();
 
     if (!trimmed || isStreaming) return;
 
-    // Clear input first
     setInput("");
     setIsStreaming(true);
 
     const targetChatId = activeChatIdRef.current;
 
-    // Update messages to append user input and a placeholder assistant message
     setChats((prevChats) =>
       prevChats.map((c) => {
         if (c.id === targetChatId) {
@@ -164,8 +161,8 @@ export default function useChatManager() {
             title: updatedTitle,
             messages: [
               ...c.messages,
-              { role: "user", content: trimmed },
-              { role: "assistant", content: "" },
+              { role: "user" as const, content: trimmed },
+              { role: "assistant" as const, content: "" },
             ],
           };
         }
@@ -176,8 +173,8 @@ export default function useChatManager() {
     try {
       await streamChat(
         trimmed,
-        // onToken callback
-        (token) => {
+        // onToken
+        (token: string) => {
           setChats((prevChats) =>
             prevChats.map((c) => {
               if (c.id === targetChatId) {
@@ -195,12 +192,12 @@ export default function useChatManager() {
             })
           );
         },
-        // onDone callback
+        // onDone
         () => {
           setIsStreaming(false);
         },
-        // onError callback
-        (err) => {
+        // onError
+        (err: Error) => {
           setChats((prevChats) =>
             prevChats.map((c) => {
               if (c.id === targetChatId) {
@@ -222,7 +219,7 @@ export default function useChatManager() {
           setIsStreaming(false);
         }
       );
-    } catch (err) {
+    } catch {
       setIsStreaming(false);
     }
   };

@@ -1,15 +1,16 @@
 "use client";
 
 import React, { forwardRef } from "react";
+import type { ChatInputProps } from "../types";
 
-const ChatInput = forwardRef(({
+const ChatInput = forwardRef<HTMLInputElement, ChatInputProps>(({
   value,
   onChange,
   onSend,
   disabled,
   placeholder = "Ask VaultMind anything..."
 }, ref) => {
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSend();

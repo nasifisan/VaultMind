@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import type { HeaderProps } from "../types";
 
-export default function Header({ isStreaming, isOnline, onToggleSidebar }) {
+export default function Header({ isStreaming, isOnline, onToggleSidebar }: HeaderProps) {
   return (
     <header className="flex items-center gap-3 px-6 py-4 border-b border-border bg-surface/50 backdrop-blur-sm">
       {/* Sidebar Toggle Button */}

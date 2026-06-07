@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import type { ChatMessageProps } from "../types";
 
-export default function ChatMessage({ role, content, isStreaming, isLast }) {
+export default function ChatMessage({ role, content, isStreaming, isLast }: ChatMessageProps) {
   const isAssistant = role === "assistant";
 
   return (

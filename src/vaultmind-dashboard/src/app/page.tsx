@@ -25,8 +25,8 @@ export default function Home() {
     deleteChat,
   } = useChatManager();
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const inputRef = useRef(null);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when active chat changes or streaming finishes
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function Home() {
   }, [activeChatId, isStreaming, isLoaded]);
 
   // Handle suggestion click
-  const handleSuggestionClick = (suggestion) => {
+  const handleSuggestionClick = (suggestion: string): void => {
     sendMessage(suggestion);
   };
 
