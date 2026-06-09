@@ -1,9 +1,10 @@
-using Microsoft.SemanticKernel;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using VaultMind.API.Services;
+using Microsoft.SemanticKernel;
 using VaultMind.API.Interfaces;
+using VaultMind.API.Plugins;
+using VaultMind.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,16 +18,48 @@ builder.Services.AddSingleton(typeof(IMongoRepository<>), typeof(MongoRepository
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddHostedService<MongoDbInitializer>();
 
-builder.Services.AddKernel();
+
+// AI Service initialization ----->
 builder.Services.AddOpenAIChatCompletion(
     modelId: config["AI:ModelId"] ?? "phi3",
     apiKey: config["AI:ApiKey"] ?? "ollama",           // Ollama doesn't need a real key
     endpoint: new Uri(config["AI:Endpoint"] ?? "http://localhost:11434/v1")
 );
 
+builder.Services.AddSingleton(sp =>
+{
+    var kernel = new Kernel(sp);
+
+    // Register Native C# Plugin
+    kernel.Plugins.AddFromType<UtilityPlugin>("UtilityPlugin");
+
+    // Register Semantic Prompt Plugin
+    var promptsPath = Path.Combine(AppContext.BaseDirectory, "Prompts");
+    var chatPluginPath = Path.Combine(promptsPath, "ChatPlugin");
+    if (Directory.Exists(chatPluginPath))
+    {
+        kernel.ImportPluginFromPromptDirectory(chatPluginPath, "ChatPlugin");
+    }
+
+    // Diagnostic output to see what is loaded
+    foreach (var plugin in kernel.Plugins)
+    {
+        Console.WriteLine($"[DIAGNOSTIC] Loaded Plugin: '{plugin.Name}'");
+        foreach (var function in plugin)
+        {
+            Console.WriteLine($"[DIAGNOSTIC]   Function: '{function.Name}'");
+        }
+    }
+
+    return kernel;
+});
+
+//End AI service initialization ----<>
+
 // Register Controllers and preserve PascalCase casing for JSON serialization
 builder.Services.AddControllers()
-    .AddJsonOptions(options => {
+    .AddJsonOptions(options =>
+    {
         options.JsonSerializerOptions.PropertyNamingPolicy = null;
     });
 
@@ -71,4 +104,11 @@ app.UseAuthorization();
 // ── Map Controllers ──
 app.MapControllers();
 
+// Warm up and verify Kernel plugins on startup, avoid lazy loading
+using (var scope = app.Services.CreateScope())
+{
+    scope.ServiceProvider.GetService<Kernel>();
+}
+
 app.Run();
+

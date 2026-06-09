@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using VaultMind.API.Interfaces;
 
 namespace VaultMind.API.Controllers;
@@ -10,17 +11,16 @@ namespace VaultMind.API.Controllers;
 [Authorize]
 public class ChatController : ControllerBase
 {
-    private readonly IChatCompletionService _chatService;
+    private readonly Kernel _kernel;
     private readonly ISseService _sseService;
 
-    public ChatController(IChatCompletionService chatService, ISseService sseService)
+    public ChatController(Kernel kernel, ISseService sseService)
     {
-        _chatService = chatService;
+        _kernel = kernel;
         _sseService = sseService;
     }
 
     [HttpPost]
-    [Authorize]
     public async Task Post([FromBody] ChatRequest request)
     {
         var tokens = GetChatTokensAsync(request.Messages);
@@ -29,39 +29,66 @@ public class ChatController : ControllerBase
 
     private async IAsyncEnumerable<string> GetChatTokensAsync(List<ChatMessageDto> messages)
     {
-        var history = new ChatHistory();
-        history.AddSystemMessage(
-            "Your name is VaultMind. You are an intelligent document analysis assistant " +
-            "built by the VaultMind team. You must ALWAYS identify yourself as VaultMind. " +
-            "You are NOT Phi, you are NOT a Microsoft product, you are NOT an OpenAI product. " +
-            "Never mention Phi, Microsoft, OpenAI, or any other AI company when asked about yourself. " +
-            "If asked 'who are you?' or 'what are you?', respond with: " +
-            "'I am VaultMind, an intelligent document analysis assistant.' " +
-            "You are helpful, concise, and knowledgeable. " +
-            "When you don't know something, you say so honestly."
-        );
+        string latestInput = "";
+        string formattedHistory = "";
 
-        if (messages != null)
+        if (messages != null && messages.Count > 0)
         {
-            foreach (var msg in messages)
+            latestInput = messages.Last().Content;
+
+            if (messages.Count > 1)
             {
-                if (string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase))
+                var historyLines = new List<string>();
+                for (int i = 0; i < messages.Count - 1; i++)
                 {
-                    history.AddUserMessage(msg.Content);
+                    var msg = messages[i];
+                    string sender = string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase) ? "User" : "Assistant";
+                    historyLines.Add($"{sender}: {msg.Content}");
                 }
-                else if (string.Equals(msg.Role, "assistant", StringComparison.OrdinalIgnoreCase) || 
-                         string.Equals(msg.Role, "model", StringComparison.OrdinalIgnoreCase))
-                {
-                    history.AddAssistantMessage(msg.Content);
-                }
+                formattedHistory = string.Join("\n", historyLines);
             }
         }
 
-        await foreach (var chunk in _chatService.GetStreamingChatMessageContentsAsync(history))
+        var settings = new OpenAIPromptExecutionSettings();
+
+        var arguments = new KernelArguments(settings)
         {
-            if (chunk.Content is not null)
+            { "input", latestInput },
+            { "history", formattedHistory },
+            { "style", "professional, helpful, and concise" }
+        };
+
+        var chatFunction = _kernel.Plugins["ChatPlugin"]["VaultMindChat"];
+
+        // Read and render the prompt template from disk for debugging
+        //var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "ChatPlugin", "VaultMindChat", "skprompt.txt");
+        //if (System.IO.File.Exists(templatePath))
+        //{
+        //    try
+        //    {
+        //        string templateString = await System.IO.File.ReadAllTextAsync(templatePath);
+        //        var promptConfig = new PromptTemplateConfig(templateString);
+        //        var templateFactory = new KernelPromptTemplateFactory();
+        //        var promptTemplate = templateFactory.Create(promptConfig);
+
+        //        string renderedPrompt = await promptTemplate.RenderAsync(_kernel, arguments);
+        //        Console.WriteLine("\n=== [DEBUG] RENDERED PROMPT SENT TO LLM ===");
+        //        Console.WriteLine(renderedPrompt);
+        //        Console.WriteLine("============================================\n");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Console.WriteLine($"[DEBUG] Failed to render prompt: {ex.Message}");
+        //    }
+        //}
+
+        var responseStream = _kernel.InvokeStreamingAsync<string>(chatFunction, arguments);
+
+        await foreach (var chunk in responseStream)
+        {
+            if (chunk is not null)
             {
-                yield return chunk.Content;
+                yield return chunk;
             }
         }
     }
@@ -69,4 +96,3 @@ public class ChatController : ControllerBase
 
 public record ChatMessageDto(string Role, string Content);
 public record ChatRequest(List<ChatMessageDto> Messages);
-
