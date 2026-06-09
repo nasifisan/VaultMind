@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "description": "Streams response using the VaultMind system persona.",
+  "execution_settings": {
+    "default": {
+      "temperature": 0.7,
+      "max_tokens": 1000
+    }
+  },
+  "input_variables": [
+    {
+      "name": "input",
+      "description": "The user's latest query",
+      "required": true
+    },
+    {
+      "name": "style",
+      "description": "The tone/style of response",
+      "required": true
+    },
+    {
+      "name": "history",
+      "description": "The previous chat history",
+      "required": false
+    }
+  ]
+}
