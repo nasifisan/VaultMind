@@ -20,13 +20,14 @@ public class ChatController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize]
     public async Task Post([FromBody] ChatRequest request)
     {
-        var tokens = GetChatTokensAsync(request.Message);
+        var tokens = GetChatTokensAsync(request.Messages);
         await _sseService.StreamAsync(HttpContext, tokens);
     }
 
-    private async IAsyncEnumerable<string> GetChatTokensAsync(string message)
+    private async IAsyncEnumerable<string> GetChatTokensAsync(List<ChatMessageDto> messages)
     {
         var history = new ChatHistory();
         history.AddSystemMessage(
@@ -39,7 +40,22 @@ public class ChatController : ControllerBase
             "You are helpful, concise, and knowledgeable. " +
             "When you don't know something, you say so honestly."
         );
-        history.AddUserMessage(message);
+
+        if (messages != null)
+        {
+            foreach (var msg in messages)
+            {
+                if (string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase))
+                {
+                    history.AddUserMessage(msg.Content);
+                }
+                else if (string.Equals(msg.Role, "assistant", StringComparison.OrdinalIgnoreCase) || 
+                         string.Equals(msg.Role, "model", StringComparison.OrdinalIgnoreCase))
+                {
+                    history.AddAssistantMessage(msg.Content);
+                }
+            }
+        }
 
         await foreach (var chunk in _chatService.GetStreamingChatMessageContentsAsync(history))
         {
@@ -51,4 +67,6 @@ public class ChatController : ControllerBase
     }
 }
 
-public record ChatRequest(string Message);
+public record ChatMessageDto(string Role, string Content);
+public record ChatRequest(List<ChatMessageDto> Messages);
+

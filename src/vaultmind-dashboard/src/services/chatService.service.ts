@@ -1,17 +1,18 @@
 import { apiFetch } from "./apiClient";
+import { ChatMessage } from "../types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5139";
 
 /**
  * Streams the chat completion from the backend SSE endpoint.
- * @param message - The user's input message.
+ * @param messages - The conversation message history.
  * @param onToken - Callback when a new text token is received.
  * @param onDone - Callback when streaming finishes successfully.
  * @param onError - Callback when an error occurs.
  * @returns The reader, which can be used to cancel streaming.
  */
 export async function streamChat(
-  message: string,
+  messages: ChatMessage[],
   onToken: (token: string) => void,
   onDone: () => void,
   onError: (err: Error) => void
@@ -20,7 +21,12 @@ export async function streamChat(
     const response = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        Messages: messages.map((m) => ({
+          Role: m.role,
+          Content: m.content,
+        })),
+      }),
     });
 
     if (!response.ok) {

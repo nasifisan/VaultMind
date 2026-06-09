@@ -32,7 +32,6 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("token")]
-    [Authorize]
     public async Task<IActionResult> Token([FromBody] TokenRequest request)
     {
         var refreshTokenExpiryDays = double.Parse(_config["Auth:RefreshTokenExpirationDays"] ?? "7");

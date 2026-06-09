@@ -74,7 +74,7 @@ export default function useChatManager(): ChatManager {
 
     const interval = setInterval(() => {
       checkHealth().then(setIsOnline);
-    }, 15000);
+    }, 150000);
 
     return () => clearInterval(interval);
   }, []);
@@ -170,9 +170,14 @@ export default function useChatManager(): ChatManager {
       })
     );
 
+    const activeChat = chats.find((c) => c.id === targetChatId);
+    const historyToSend = activeChat
+      ? [...activeChat.messages, { role: "user" as const, content: trimmed }]
+      : [{ role: "user" as const, content: trimmed }];
+
     try {
       await streamChat(
-        trimmed,
+        historyToSend,
         // onToken
         (token: string) => {
           setChats((prevChats) =>
