@@ -1,3 +1,5 @@
+import { apiFetch } from "./apiClient";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5139";
 
 /**
@@ -15,7 +17,7 @@ export async function streamChat(
   onError: (err: Error) => void
 ): Promise<ReadableStreamDefaultReader<Uint8Array> | undefined> {
   try {
-    const response = await fetch(`${API_URL}/api/chat`, {
+    const response = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),

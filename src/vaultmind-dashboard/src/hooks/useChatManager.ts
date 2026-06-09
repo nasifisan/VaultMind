@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { streamChat, checkHealth } from "../services/chatService";
+import { streamChat, checkHealth } from "../services/chatService.service";
 import type { Chat, ChatManager } from "../types";
 
 export default function useChatManager(): ChatManager {

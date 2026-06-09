@@ -1,32 +1,33 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.SemanticKernel.ChatCompletion;
 using VaultMind.API.Interfaces;
 
-namespace VaultMind.API.Endpoints;
+namespace VaultMind.API.Controllers;
 
-public static class ChatEndpoints
+[ApiController]
+[Route("api/chat")]
+[Authorize]
+public class ChatController : ControllerBase
 {
-    public static WebApplication MapChatEndpoints(this WebApplication app)
-    {
-        app.MapPost("/api/chat", HandleChatStream);
+    private readonly IChatCompletionService _chatService;
+    private readonly ISseService _sseService;
 
-        return app;
+    public ChatController(IChatCompletionService chatService, ISseService sseService)
+    {
+        _chatService = chatService;
+        _sseService = sseService;
     }
 
-    private static async Task HandleChatStream(
-        ChatRequest request,
-        HttpContext http,
-        IChatCompletionService chatService,
-        ISseService sseService)
+    [HttpPost]
+    public async Task Post([FromBody] ChatRequest request)
     {
-        var tokens = GetChatTokensAsync(chatService, request.Message);
-        await sseService.StreamAsync(http, tokens);
+        var tokens = GetChatTokensAsync(request.Message);
+        await _sseService.StreamAsync(HttpContext, tokens);
     }
 
-    private static async IAsyncEnumerable<string> GetChatTokensAsync(
-        IChatCompletionService chatService,
-        string message)
+    private async IAsyncEnumerable<string> GetChatTokensAsync(string message)
     {
-        // Build chat history with system prompt
         var history = new ChatHistory();
         history.AddSystemMessage(
             "Your name is VaultMind. You are an intelligent document analysis assistant " +
@@ -40,7 +41,7 @@ public static class ChatEndpoints
         );
         history.AddUserMessage(message);
 
-        await foreach (var chunk in chatService.GetStreamingChatMessageContentsAsync(history))
+        await foreach (var chunk in _chatService.GetStreamingChatMessageContentsAsync(history))
         {
             if (chunk.Content is not null)
             {
@@ -50,5 +51,4 @@ public static class ChatEndpoints
     }
 }
 
-// ── Request Models ──
 public record ChatRequest(string Message);

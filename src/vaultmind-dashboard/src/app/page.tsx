@@ -8,6 +8,7 @@ import ChatWindow from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
 import Footer from "../components/Footer";
 import LoadingScreen from "../components/LoadingScreen";
+import { authService } from "@/services/authService.service";
 
 export default function Home() {
   const {
@@ -27,6 +28,14 @@ export default function Home() {
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Proactively fetch or refresh token on application mount/reload
+  useEffect(() => {
+    const tokens = authService.getTokens();
+    authService.requestToken(tokens?.RefreshToken).catch((err) => {
+      console.warn("Could not auto-initialize or refresh session token on app load.", err);
+    });
+  }, []);
 
   // Focus input when active chat changes or streaming finishes
   useEffect(() => {
@@ -83,7 +92,7 @@ export default function Home() {
         />
 
         {/* Footer Area - input bar and backend info */}
-        <div className="border-t border-border bg-surface/50 backdrop-blur-sm px-4 py-4 flex-shrink-0">
+        <div className="border-t border-border bg-surface/50 backdrop-blur-sm px-4 py-4 shrink-0">
           <ChatInput
             ref={inputRef}
             value={input}

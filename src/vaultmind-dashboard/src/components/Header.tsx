@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { HeaderProps } from "../types";
+import menuIcon from "../../public/icons/menu.svg";
 
 export default function Header({ isStreaming, isOnline, onToggleSidebar }: HeaderProps) {
   return (
@@ -13,19 +14,17 @@ export default function Header({ isStreaming, isOnline, onToggleSidebar }: Heade
         title="Toggle sidebar"
         aria-label="Toggle sidebar"
       >
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M4 6h16M4 12h12M4 18h16"
-          />
-        </svg>
+        <div
+          className="w-5 h-5 bg-current transition-colors duration-200"
+          style={{
+            maskImage: `url(${menuIcon.src})`,
+            WebkitMaskImage: `url(${menuIcon.src})`,
+            maskSize: "contain",
+            WebkitMaskSize: "contain",
+            maskRepeat: "no-repeat",
+            WebkitMaskRepeat: "no-repeat",
+          }}
+        />
       </button>
 
       <div className="flex items-center gap-3">
