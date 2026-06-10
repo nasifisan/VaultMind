@@ -33,7 +33,10 @@ export default function Home() {
   useEffect(() => {
     const tokens = authService.getTokens();
     authService.requestToken(tokens?.RefreshToken).catch((err) => {
-      console.warn("Could not auto-initialize or refresh session token on app load.", err);
+      console.warn(
+        "Could not auto-initialize or refresh session token on app load.",
+        err,
+      );
     });
   }, []);
 

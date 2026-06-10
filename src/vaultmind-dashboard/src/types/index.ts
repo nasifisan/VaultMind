@@ -1,7 +1,9 @@
 // ── Chat Domain Types ──
 
+import { ConversationRole } from "./conversation/conversation.contracts";
+
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: ConversationRole;
   content: string;
 }
 
@@ -49,7 +51,7 @@ export interface ChatInputProps {
 }
 
 export interface ChatMessageProps {
-  role: "user" | "assistant";
+  role: ConversationRole;
   content: string;
   isStreaming: boolean;
   isLast: boolean;

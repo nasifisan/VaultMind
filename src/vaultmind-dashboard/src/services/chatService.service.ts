@@ -1,31 +1,34 @@
 import { apiFetch } from "./apiClient";
-import { ChatMessage } from "../types";
+import {
+  Conversation,
+  ConversationHeader,
+} from "@/types/conversation/conversation.contracts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5139";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5152";
 
 /**
  * Streams the chat completion from the backend SSE endpoint.
- * @param messages - The conversation message history.
+ * @param conversationId - The unique Guid of the conversation.
+ * @param content - The latest user message text.
  * @param onToken - Callback when a new text token is received.
  * @param onDone - Callback when streaming finishes successfully.
  * @param onError - Callback when an error occurs.
  * @returns The reader, which can be used to cancel streaming.
  */
 export async function streamChat(
-  messages: ChatMessage[],
+  conversationId: string,
+  content: string,
   onToken: (token: string) => void,
   onDone: () => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
 ): Promise<ReadableStreamDefaultReader<Uint8Array> | undefined> {
   try {
     const response = await apiFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        Messages: messages.map((m) => ({
-          Role: m.role,
-          Content: m.content,
-        })),
+        ConversationId: conversationId,
+        Content: content,
       }),
     });
 
@@ -78,6 +81,82 @@ export async function streamChat(
   } catch (err) {
     onError(err as Error);
     throw err;
+  }
+}
+
+/**
+ * Fetch all conversation headers belonging to the current session/user.
+ */
+export async function getConversations(): Promise<ConversationHeader[]> {
+  const response = await apiFetch("/api/conversations", {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load conversations: ${response.status}`);
+  }
+  return response.json() as Promise<ConversationHeader[]>;
+}
+
+/**
+ * Retrieve the full conversation detailing its message history.
+ */
+export async function getConversation(id: string): Promise<Conversation> {
+  const response = await apiFetch(`/api/conversations/${id}`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load conversation details: ${response.status}`);
+  }
+  return response.json() as Promise<Conversation>;
+}
+
+/**
+ * Explicitly save/create a new conversation or update its metadata.
+ */
+export async function saveConversation(
+  id: string,
+  title?: string,
+): Promise<Conversation> {
+  const response = await apiFetch("/api/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      Id: id,
+      Title: title || null,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to save conversation: ${response.status}`);
+  }
+  return response.json() as Promise<Conversation>;
+}
+
+/**
+ * Update the title of a specific conversation manually.
+ */
+export async function updateConversationTitle(
+  id: string,
+  title: string,
+): Promise<void> {
+  const response = await apiFetch(`/api/conversations/${id}/title`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ Title: title }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update title: ${response.status}`);
+  }
+}
+
+/**
+ * Delete a conversation.
+ */
+export async function deleteConversation(id: string): Promise<void> {
+  const response = await apiFetch(`/api/conversations/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete conversation: ${response.status}`);
   }
 }
 

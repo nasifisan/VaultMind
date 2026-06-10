@@ -1,7 +1,9 @@
 import React from "react";
 import type { LoadingScreenProps } from "../types";
 
-export default function LoadingScreen({ message = "Initializing VaultMind..." }: LoadingScreenProps) {
+export default function LoadingScreen({
+  message = "Initializing VaultMind...",
+}: LoadingScreenProps) {
   return (
     <div className="flex items-center justify-center h-screen bg-zinc-950 text-foreground select-none">
       <div className="flex flex-col items-center gap-3 animate-fade-in">

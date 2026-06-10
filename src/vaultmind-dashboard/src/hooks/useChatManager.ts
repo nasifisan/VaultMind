@@ -1,142 +1,208 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { streamChat, checkHealth } from "../services/chatService.service";
+import {
+  streamChat,
+  getConversations,
+  getConversation,
+  saveConversation,
+  deleteConversation,
+} from "../services/chatService.service";
+import { useBackendHealth } from "./useBackendHealth";
 import type { Chat, ChatManager } from "../types";
+import { generateGuid } from "@/shared/utils";
+import { ConversationRole } from "@/types/conversation/conversation.contracts";
 
 export default function useChatManager(): ChatManager {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [input, setInput] = useState<string>("");
-  const [isOnline, setIsOnline] = useState<boolean>(true);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
-  // Keep a ref to the activeChatId so callbacks in streamChat always have the latest value
+  // Monitor API health
+  const isOnline = useBackendHealth();
+
+  // Active ID ref to prevent stale closures during streams
   const activeChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
 
-  // Load chats from localStorage on mount
+  // Load conversations on mount
   useEffect(() => {
-    const savedChats = localStorage.getItem("vaultmind_chats");
-    const savedActiveId = localStorage.getItem("vaultmind_active_chat_id");
-
-    let initialChats: Chat[] = [];
-    let initialActiveId: string | null = null;
-
-    if (savedChats) {
+    async function initChats() {
       try {
-        initialChats = JSON.parse(savedChats) as Chat[];
-      } catch (e) {
-        console.error("Failed to parse saved chats:", e);
-        initialChats = [];
+        const backendHeaders = await getConversations();
+
+        let loadedChats: Chat[] = backendHeaders.map((h) => ({
+          id: h.Id,
+          title: h.Title,
+          messages: [],
+          createdAt: new Date(h.CreatedAt).getTime(),
+        }));
+
+        const savedActiveId = localStorage.getItem("vaultmind_active_chat_id");
+        let activeId: string | null = null;
+
+        if (loadedChats.length === 0) {
+          const defaultChatId = generateGuid();
+          await saveConversation(defaultChatId, "New Chat");
+
+          loadedChats = [
+            {
+              id: defaultChatId,
+              title: "New Chat",
+              messages: [],
+              createdAt: Date.now(),
+            },
+          ];
+          activeId = defaultChatId;
+        } else {
+          activeId =
+            savedActiveId && loadedChats.some((c) => c.id === savedActiveId)
+              ? savedActiveId
+              : loadedChats[0].id;
+        }
+
+        setChats(loadedChats);
+        setActiveChatId(activeId);
+
+        // Populate active chat messages
+        if (activeId) {
+          const detail = await getConversation(activeId);
+          setChats((prev) =>
+            syncConversationState(
+              prev,
+              activeId,
+              detail.Title,
+              detail.Messages,
+            ),
+          );
+        }
+      } catch (err) {
+        console.error("Fallback to local storage...", err);
+        const savedChats = localStorage.getItem("vaultmind_chats");
+        const savedActiveId = localStorage.getItem("vaultmind_active_chat_id");
+        let initialChats: Chat[] = savedChats ? JSON.parse(savedChats) : [];
+
+        if (initialChats.length === 0) {
+          const defaultId = generateGuid();
+          initialChats = [
+            {
+              id: defaultId,
+              title: "New Chat",
+              messages: [],
+              createdAt: Date.now(),
+            },
+          ];
+        }
+
+        setChats(initialChats);
+        setActiveChatId(
+          savedActiveId && initialChats.some((c) => c.id === savedActiveId)
+            ? savedActiveId
+            : initialChats[0].id,
+        );
+      } finally {
+        setIsLoaded(true);
       }
     }
 
-    if (initialChats.length === 0) {
-      const defaultChat: Chat = {
-        id: Date.now().toString(),
-        title: "New Chat",
-        messages: [],
-        createdAt: Date.now(),
-      };
-      initialChats = [defaultChat];
-      initialActiveId = defaultChat.id;
-    } else {
-      initialActiveId =
-        savedActiveId && initialChats.some((c) => c.id === savedActiveId)
-          ? savedActiveId
-          : initialChats[0].id;
-    }
-
-    setChats(initialChats);
-    setActiveChatId(initialActiveId);
-    setIsLoaded(true);
+    initChats();
   }, []);
 
-  // Save chats to localStorage on change
+  // Sync active chat ID to localStorage
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem("vaultmind_chats", JSON.stringify(chats));
       if (activeChatId) {
         localStorage.setItem("vaultmind_active_chat_id", activeChatId);
       } else {
         localStorage.removeItem("vaultmind_active_chat_id");
       }
     }
-  }, [chats, activeChatId, isLoaded]);
+  }, [activeChatId, isLoaded]);
 
-  // Poll backend health status
-  useEffect(() => {
-    checkHealth().then(setIsOnline);
-
-    const interval = setInterval(() => {
-      checkHealth().then(setIsOnline);
-    }, 150000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Get current active chat
-  const activeChat: Chat | null = chats.find((c) => c.id === activeChatId) || null;
+  const activeChat = chats.find((c) => c.id === activeChatId) || null;
   const activeMessages = activeChat ? activeChat.messages : [];
 
-  // Create a new empty chat session
+  // Actions
   const createNewChat = (): void => {
     if (isStreaming) return;
+    if (activeChat && activeChat.messages.length === 0) return;
 
-    if (activeChat && activeChat.messages.length === 0) {
-      return;
-    }
-
+    const newChatId = generateGuid();
     const newChat: Chat = {
-      id: Date.now().toString(),
+      id: newChatId,
       title: "New Chat",
       messages: [],
       createdAt: Date.now(),
     };
 
     setChats((prev) => [newChat, ...prev]);
-    setActiveChatId(newChat.id);
+    setActiveChatId(newChatId);
     setInput("");
+
+    saveConversation(newChatId, "New Chat").catch((err) => console.error(err));
   };
 
-  // Switch to another chat session
   const selectChat = (id: string): void => {
     if (isStreaming) return;
     setActiveChatId(id);
     setInput("");
+
+    getConversation(id)
+      .then((detail) =>
+        setChats((prev) =>
+          syncConversationState(prev, id, detail.Title, detail.Messages),
+        ),
+      )
+      .catch((err) => console.error(err));
   };
 
-  // Delete a chat session
   const deleteChat = (id: string, e?: React.MouseEvent): void => {
-    if (e) {
-      e.stopPropagation();
-    }
+    if (e) e.stopPropagation();
     if (isStreaming) return;
 
     const remainingChats = chats.filter((c) => c.id !== id);
 
     if (remainingChats.length === 0) {
-      const defaultChat: Chat = {
-        id: Date.now().toString(),
-        title: "New Chat",
-        messages: [],
-        createdAt: Date.now(),
-      };
-      setChats([defaultChat]);
-      setActiveChatId(defaultChat.id);
+      const defaultId = generateGuid();
+      setChats([
+        {
+          id: defaultId,
+          title: "New Chat",
+          messages: [],
+          createdAt: Date.now(),
+        },
+      ]);
+      setActiveChatId(defaultId);
+      saveConversation(defaultId, "New Chat").catch((err) =>
+        console.error(err),
+      );
     } else {
       setChats(remainingChats);
       if (activeChatId === id) {
-        setActiveChatId(remainingChats[0].id);
+        const nextId = remainingChats[0].id;
+        setActiveChatId(nextId);
+        getConversation(nextId)
+          .then((detail) =>
+            setChats((prev) =>
+              syncConversationState(
+                prev,
+                nextId,
+                detail.Title,
+                detail.Messages,
+              ),
+            ),
+          )
+          .catch((err) => console.error(err));
       }
     }
+
+    deleteConversation(id).catch((err) => console.error(err));
   };
 
-  // Send a message
   const sendMessage = async (messageText?: string): Promise<void> => {
     const textToSend = typeof messageText === "string" ? messageText : input;
     const trimmed = textToSend.trim();
@@ -147,82 +213,66 @@ export default function useChatManager(): ChatManager {
     setIsStreaming(true);
 
     const targetChatId = activeChatIdRef.current;
+    if (!targetChatId) {
+      setIsStreaming(false);
+      return;
+    }
 
-    setChats((prevChats) =>
-      prevChats.map((c) => {
-        if (c.id === targetChatId) {
-          const isFirstMessage = c.messages.length === 0;
-          const updatedTitle = isFirstMessage
-            ? trimmed.slice(0, 30) + (trimmed.length > 30 ? "..." : "")
-            : c.title;
+    // Append user & temporary empty assistant messages
+    setChats((prev) => {
+      const currentChat = prev.find((c) => c.id === targetChatId);
+      const isFirst = currentChat ? currentChat.messages.length === 0 : true;
+      const updatedTitle = isFirst
+        ? trimmed.slice(0, 30) + (trimmed.length > 30 ? "..." : "")
+        : currentChat?.title;
 
-          return {
-            ...c,
-            title: updatedTitle,
-            messages: [
-              ...c.messages,
-              { role: "user" as const, content: trimmed },
-              { role: "assistant" as const, content: "" },
-            ],
-          };
-        }
-        return c;
-      })
-    );
-
-    const activeChat = chats.find((c) => c.id === targetChatId);
-    const historyToSend = activeChat
-      ? [...activeChat.messages, { role: "user" as const, content: trimmed }]
-      : [{ role: "user" as const, content: trimmed }];
+      const step1 = appendMessage(
+        prev,
+        targetChatId,
+        ConversationRole.User,
+        trimmed,
+        updatedTitle,
+      );
+      return appendMessage(step1, targetChatId, ConversationRole.Assistant, "");
+    });
 
     try {
       await streamChat(
-        historyToSend,
+        targetChatId,
+        trimmed,
         // onToken
-        (token: string) => {
-          setChats((prevChats) =>
-            prevChats.map((c) => {
-              if (c.id === targetChatId) {
-                const updatedMessages = [...c.messages];
-                const last = updatedMessages[updatedMessages.length - 1];
-                if (last && last.role === "assistant") {
-                  updatedMessages[updatedMessages.length - 1] = {
-                    ...last,
-                    content: last.content + token,
-                  };
-                }
-                return { ...c, messages: updatedMessages };
-              }
-              return c;
-            })
-          );
-        },
+        (token) =>
+          setChats((prev) =>
+            appendTokenToLastMessage(prev, targetChatId, token),
+          ),
         // onDone
         () => {
           setIsStreaming(false);
+          // Sync full details from backend (captures finalized assistant text and title updates)
+          getConversation(targetChatId)
+            .then((detail) =>
+              setChats((prev) =>
+                syncConversationState(
+                  prev,
+                  targetChatId,
+                  detail.Title,
+                  detail.Messages,
+                ),
+              ),
+            )
+            .catch((err) => console.error(err));
         },
         // onError
-        (err: Error) => {
-          setChats((prevChats) =>
-            prevChats.map((c) => {
-              if (c.id === targetChatId) {
-                const updatedMessages = [...c.messages];
-                const last = updatedMessages[updatedMessages.length - 1];
-                if (last && last.role === "assistant") {
-                  updatedMessages[updatedMessages.length - 1] = {
-                    ...last,
-                    content:
-                      last.content +
-                      `\n\n⚠️ Failed to connect to VaultMind API. Make sure the backend is running.\n\nError: ${err.message}`,
-                  };
-                }
-                return { ...c, messages: updatedMessages };
-              }
-              return c;
-            })
+        (err) => {
+          setChats((prev) =>
+            appendTokenToLastMessage(
+              prev,
+              targetChatId,
+              `\n\n⚠️ Stream failure: ${err.message}`,
+            ),
           );
           setIsStreaming(false);
-        }
+        },
       );
     } catch {
       setIsStreaming(false);
@@ -245,3 +295,60 @@ export default function useChatManager(): ChatManager {
     deleteChat,
   };
 }
+
+// ── Pure State Reducers ──
+const appendMessage = (
+  chats: Chat[],
+  chatId: string,
+  role: ConversationRole,
+  content: string,
+  newTitle?: string,
+): Chat[] =>
+  chats.map((c) =>
+    c.id === chatId
+      ? {
+          ...c,
+          title: newTitle ?? c.title,
+          messages: [...c.messages, { role, content }],
+        }
+      : c,
+  );
+
+const appendTokenToLastMessage = (
+  chats: Chat[],
+  chatId: string,
+  token: string,
+): Chat[] =>
+  chats.map((c) => {
+    if (c.id === chatId) {
+      const updated = [...c.messages];
+      const last = updated[updated.length - 1];
+      if (last && last.role === ConversationRole.Assistant) {
+        updated[updated.length - 1] = {
+          ...last,
+          content: last.content + token,
+        };
+      }
+      return { ...c, messages: updated };
+    }
+    return c;
+  });
+
+const syncConversationState = (
+  chats: Chat[],
+  chatId: string,
+  title: string,
+  messages: { Role: string; Content: string }[],
+): Chat[] =>
+  chats.map((c) =>
+    c.id === chatId
+      ? {
+          ...c,
+          title,
+          messages: messages.map((m) => ({
+            role: m.Role as ConversationRole,
+            content: m.Content,
+          })),
+        }
+      : c,
+  );

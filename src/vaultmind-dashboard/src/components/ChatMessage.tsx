@@ -1,10 +1,15 @@
 "use client";
 
-import React from "react";
+import { ConversationRole } from "@/types/conversation/conversation.contracts";
 import type { ChatMessageProps } from "../types";
 
-export default function ChatMessage({ role, content, isStreaming, isLast }: ChatMessageProps) {
-  const isAssistant = role === "assistant";
+export default function ChatMessage({
+  role,
+  content,
+  isStreaming,
+  isLast,
+}: ChatMessageProps) {
+  const isAssistant = role === ConversationRole.Assistant;
 
   return (
     <div
@@ -14,7 +19,7 @@ export default function ChatMessage({ role, content, isStreaming, isLast }: Chat
     >
       {/* Assistant Avatar */}
       {isAssistant && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center text-xs font-bold mt-1 select-none">
+        <div className="shrink-0 w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center text-xs font-bold mt-1 select-none">
           VM
         </div>
       )}
@@ -29,13 +34,15 @@ export default function ChatMessage({ role, content, isStreaming, isLast }: Chat
       >
         {content}
         {isAssistant && isStreaming && isLast && (
-          <span className="cursor-blink ml-0.5 text-accent font-semibold">▊</span>
+          <span className="cursor-blink ml-0.5 text-accent font-semibold">
+            ▊
+          </span>
         )}
       </div>
 
       {/* User Avatar */}
       {!isAssistant && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-zinc-700 text-zinc-300 flex items-center justify-center text-xs font-bold mt-1 select-none">
+        <div className="shrink-0 w-8 h-8 rounded-lg bg-zinc-700 text-zinc-300 flex items-center justify-center text-xs font-bold mt-1 select-none">
           You
         </div>
       )}

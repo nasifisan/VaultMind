@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
@@ -14,6 +15,7 @@ public class AuthController : ControllerBase
     private readonly IMongoRepository<User> _usersRepo;
     private readonly IMongoRepository<RefreshToken> _refreshTokensRepo;
     private readonly IMongoRepository<ActiveAccessToken> _activeTokensRepo;
+    private readonly IMongoRepository<Conversation> _conversationsRepo;
     private readonly IJwtService _jwtService;
     private readonly IConfiguration _config;
 
@@ -21,12 +23,14 @@ public class AuthController : ControllerBase
         IMongoRepository<User> usersRepo,
         IMongoRepository<RefreshToken> refreshTokensRepo,
         IMongoRepository<ActiveAccessToken> activeTokensRepo,
+        IMongoRepository<Conversation> conversationsRepo,
         IJwtService jwtService,
         IConfiguration config)
     {
         _usersRepo = usersRepo;
         _refreshTokensRepo = refreshTokensRepo;
         _activeTokensRepo = activeTokensRepo;
+        _conversationsRepo = conversationsRepo;
         _jwtService = jwtService;
         _config = config;
     }
@@ -59,19 +63,16 @@ public class AuthController : ControllerBase
             Guid userId = storedToken.UserId;
             string name, email, role;
 
-            if (userId == Guid.Empty)
+            var user = await _usersRepo.GetByIdAsync(userId);
+            if (user == null)
             {
+                // Unrecognized userId in Users collection: this is a unique guest/anonymous user
                 name = UserRoles.Anonymous;
                 email = "anonymous@vaultmind.local";
                 role = UserRoles.Anonymous;
             }
             else
             {
-                var user = await _usersRepo.GetByIdAsync(userId);
-                if (user == null)
-                {
-                    return Unauthorized(new { Error = "User no longer exists" });
-                }
                 name = user.Name;
                 email = user.Email;
                 role = UserRoles.User;
@@ -110,10 +111,10 @@ public class AuthController : ControllerBase
             return Ok(new TokenResponse(newAccessToken, newRefreshTokenString, expUnix, expUnix));
         }
 
-        // ── Anonymous Token Flow ──
+        // ── Anonymous Token Flow (Initial Load) ──
         else
         {
-            var anonymousUserId = Guid.Empty;
+            var anonymousUserId = Guid.NewGuid(); // Generate a unique Guid for this guest session
             var anonymousName = UserRoles.Anonymous;
             var anonymousEmail = "anonymous@vaultmind.local";
             var anonymousRole = UserRoles.Anonymous;
@@ -183,7 +184,7 @@ public class AuthController : ControllerBase
         var refreshTokenExpiryDays = double.Parse(_config["Auth:RefreshTokenExpirationDays"] ?? "7");
         var accessTokenExpiryMinutes = double.Parse(_config["Auth:AccessTokenExpirationMinutes"] ?? "60");
 
-        var accessToken = _jwtService.GenerateAccessToken(newUser.Id, newUser.Name, newUser.Email, UserRoles.Anonymous);
+        var accessToken = _jwtService.GenerateAccessToken(newUser.Id, newUser.Name, newUser.Email, UserRoles.User);
         var refreshTokenString = _jwtService.GenerateRefreshToken();
 
         // Extract JTI
@@ -231,10 +232,11 @@ public class AuthController : ControllerBase
             return Unauthorized(new { Error = "Invalid email or password" });
         }
 
-        //// ── Retrieve & Validate Anonymous Token ──
+        // ── Retrieve & Validate Anonymous Token and migrate sessions ──
+        Guid? anonymousUserId = null;
         //string? anonymousToken = request.AnonymousToken;
 
-        //// If not in body, try to extract from Authorization header
+        // If not in body, try to extract from Authorization header
         //if (string.IsNullOrEmpty(anonymousToken))
         //{
         //    var authHeader = Request.Headers.Authorization.ToString();
@@ -244,35 +246,56 @@ public class AuthController : ControllerBase
         //    }
         //}
 
-        //if (string.IsNullOrEmpty(anonymousToken))
+        //if (!string.IsNullOrEmpty(anonymousToken))
         //{
-        //    return BadRequest(new { Error = "Anonymous token is required for sign-in migration" });
+        //    var principal = _jwtService.ValidateToken(anonymousToken);
+        //    if (principal != null)
+        //    {
+        //        var nameClaim = principal.FindFirst("uniquename")?.Value ?? principal.FindFirst(ClaimTypes.Name)?.Value;
+
+        //        // If it was indeed an anonymous token, extract the unique ID
+        //        if (nameClaim == UserRoles.Anonymous)
+        //        {
+        //            var anonymousUserIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        //            if (Guid.TryParse(anonymousUserIdClaim, out var parsedId))
+        //            {
+        //                anonymousUserId = parsedId;
+        //            }
+        //        }
+        //    }
         //}
 
-        //var principal = _jwtService.ValidateToken(anonymousToken);
-        //if (principal == null)
-        //{
-        //    return BadRequest(new { Error = "Invalid or expired anonymous token" });
-        //}
+        var nameClaim = User.FindFirst("uniquename")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value;
 
-        //var nameClaim = principal.FindFirst("uniquename")?.Value ?? principal.FindFirst(ClaimTypes.Name)?.Value;
-        //if (nameClaim != "anonymous")
-        //{
-        //    return BadRequest(new { Error = "Provided token is not an anonymous token" });
-        //}
+        // Ensure the current token is indeed an anonymous session before migrating
+        if (nameClaim == UserRoles.Anonymous)
+        {
+            var anonymousUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(anonymousUserIdClaim, out var parsedId))
+            {
+                anonymousUserId = parsedId;
+            }
+        }
 
-        // ── Revoke/Clean Up Anonymous Refresh Tokens ──
-        // (Clean up any active anonymous sessions associated with this context)
-        await _refreshTokensRepo.UpdateManyAsync(
-            t => t.UserId == Guid.Empty && !t.IsRevoked,
-            Builders<RefreshToken>.Update.Set(t => t.IsRevoked, true).Set(t => t.ExpiresAt, DateTime.UtcNow)
-        );
+        // ── Revoke/Clean Up Anonymous Refresh Tokens & Migrate Conversations ──
+        if (anonymousUserId.HasValue && anonymousUserId.Value != Guid.Empty)
+        {
+            await _refreshTokensRepo.UpdateManyAsync(
+                t => t.UserId == anonymousUserId.Value && !t.IsRevoked,
+                Builders<RefreshToken>.Update.Set(t => t.IsRevoked, true).Set(t => t.ExpiresAt, DateTime.UtcNow)
+            );
+
+            await _conversationsRepo.UpdateManyAsync(
+                c => c.UserId == anonymousUserId.Value,
+                Builders<Conversation>.Update.Set(c => c.UserId, user.Id)
+            );
+        }
 
         // ── Generate Real User Token Pair ──
         var refreshTokenExpiryDays = double.Parse(_config["Auth:RefreshTokenExpirationDays"] ?? "7");
         var accessTokenExpiryMinutes = double.Parse(_config["Auth:AccessTokenExpirationMinutes"] ?? "60");
 
-        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Name, user.Email, UserRoles.Anonymous);
+        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Name, user.Email, UserRoles.User);
         var refreshTokenString = _jwtService.GenerateRefreshToken();
 
         // Extract JTI
@@ -308,7 +331,7 @@ public class AuthController : ControllerBase
 // ── Auth API Models ──
 public record TokenRequest(Guid? RefreshToken);
 public record SignUpRequest(string Email, string Password, string Name);
-public record SignInRequest(string Email, string Password, string? AnonymousToken);
+public record SignInRequest(string Email, string Password);
 
 public record TokenResponse(
     string AccessToken,
