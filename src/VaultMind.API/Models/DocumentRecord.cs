@@ -1,4 +1,3 @@
-using System;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using VaultMind.API.Interfaces;
@@ -13,6 +12,9 @@ public class DocumentRecord : IEntity
 
     [BsonRepresentation(BsonType.String)]
     public Guid UserId { get; set; }
+
+    [BsonRepresentation(BsonType.String)]
+    public Guid ConversationId { get; set; }
 
     public string FileName { get; set; } = null!;
 

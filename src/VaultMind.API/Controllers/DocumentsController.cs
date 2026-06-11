@@ -24,7 +24,7 @@ public class DocumentsController : ControllerBase
 
     [HttpPost("upload")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> Upload([FromForm] Guid id, IFormFile file)
+    public async Task<IActionResult> Upload([FromForm] Guid id, [FromForm] Guid conversationId, IFormFile file)
     {
         if (file == null || file.Length == 0)
         {
@@ -34,6 +34,11 @@ public class DocumentsController : ControllerBase
         if (id == Guid.Empty)
         {
             return BadRequest(new { Error = "A valid document ID (Guid) must be provided." });
+        }
+
+        if (conversationId == Guid.Empty)
+        {
+            return BadRequest(new { Error = "A valid conversation ID (Guid) must be provided." });
         }
 
         var userId = GetCurrentUserId();
@@ -51,6 +56,7 @@ public class DocumentsController : ControllerBase
             {
                 Id = id,
                 UserId = userId,
+                ConversationId = conversationId,
                 FileName = file.FileName,
                 StorageUrl = storageUrl,
                 ContentType = file.ContentType,
@@ -66,6 +72,14 @@ public class DocumentsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status500InternalServerError, new { Error = $"Failed to upload file to storage: {ex.Message}" });
         }
+    }
+
+    [HttpGet("conversation/{conversationId}")]
+    public async Task<ActionResult<List<DocumentRecord>>> GetDocumentsByConversation(Guid conversationId)
+    {
+        var userId = GetCurrentUserId();
+        var records = await _documentsRepo.FindAsync(d => d.ConversationId == conversationId && d.UserId == userId);
+        return Ok(records);
     }
 
     [HttpGet("{id}")]
@@ -86,6 +100,26 @@ public class DocumentsController : ControllerBase
         }
 
         return Ok(record);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteDocument(Guid id)
+    {
+        var userId = GetCurrentUserId();
+        var record = await _documentsRepo.GetByIdAsync(id);
+
+        if (record == null)
+        {
+            return NotFound(new { Error = "Document record not found." });
+        }
+
+        if (record.UserId != userId)
+        {
+            return Forbid();
+        }
+
+        await _documentsRepo.DeleteByIdAsync(id);
+        return NoContent();
     }
 
     private Guid GetCurrentUserId()

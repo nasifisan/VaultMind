@@ -1,8 +1,10 @@
+import { generateGuid } from "@/shared/utils";
 import { apiFetch } from "./apiClient";
 import {
   Conversation,
   ConversationHeader,
 } from "@/types/conversation/conversation.contracts";
+import { DocumentRecord } from "@/types/document/document.contracts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5152";
 
@@ -169,5 +171,64 @@ export async function checkHealth(): Promise<boolean> {
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Upload a document attached to a conversation.
+ */
+export async function uploadDocument(
+  conversationId: string,
+  file: File,
+): Promise<DocumentRecord> {
+  const formData = new FormData();
+  formData.append("id", generateGuid());
+  formData.append("conversationId", conversationId);
+  formData.append("file", file);
+
+  const response = await apiFetch("/api/documents/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to upload document: ${response.status}`);
+  }
+
+  return response.json() as Promise<DocumentRecord>;
+}
+
+/**
+ * Fetch all documents associated with a specific conversation.
+ */
+export async function getConversationDocuments(
+  conversationId: string,
+): Promise<DocumentRecord[]> {
+  const response = await apiFetch(
+    `/api/documents/conversation/${conversationId}`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load documents for conversation: ${response.status}`,
+    );
+  }
+
+  return response.json() as Promise<DocumentRecord[]>;
+}
+
+/**
+ * Delete a document by its unique ID.
+ */
+export async function deleteDocument(id: string): Promise<void> {
+  const response = await apiFetch(`/api/documents/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete document: ${response.status}`);
   }
 }

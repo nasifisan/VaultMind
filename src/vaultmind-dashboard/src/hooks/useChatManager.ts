@@ -7,9 +7,12 @@ import {
   getConversation,
   saveConversation,
   deleteConversation,
+  uploadDocument,
+  getConversationDocuments,
+  deleteDocument,
 } from "../services/chatService.service";
 import { useBackendHealth } from "./useBackendHealth";
-import type { Chat, ChatManager } from "../types";
+import type { Chat, ChatManager, DocumentRecord, PendingDocument } from "../types";
 import { generateGuid } from "@/shared/utils";
 import { ConversationRole } from "@/types/conversation/conversation.contracts";
 
@@ -19,6 +22,8 @@ export default function useChatManager(): ChatManager {
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [input, setInput] = useState<string>("");
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<PendingDocument[]>([]);
 
   // Monitor API health
   const isOnline = useBackendHealth();
@@ -79,6 +84,13 @@ export default function useChatManager(): ChatManager {
               detail.Messages,
             ),
           );
+          // Load active chat documents
+          try {
+            const docs = await getConversationDocuments(activeId);
+            setDocuments(docs);
+          } catch (docErr) {
+            console.error("Failed to load initial documents:", docErr);
+          }
         }
       } catch (err) {
         console.error("Fallback to local storage...", err);
@@ -142,6 +154,8 @@ export default function useChatManager(): ChatManager {
     setChats((prev) => [newChat, ...prev]);
     setActiveChatId(newChatId);
     setInput("");
+    setDocuments([]);
+    setPendingUploads([]);
 
     saveConversation(newChatId, "New Chat").catch((err) => console.error(err));
   };
@@ -150,6 +164,7 @@ export default function useChatManager(): ChatManager {
     if (isStreaming) return;
     setActiveChatId(id);
     setInput("");
+    setPendingUploads([]);
 
     getConversation(id)
       .then((detail) =>
@@ -158,6 +173,10 @@ export default function useChatManager(): ChatManager {
         ),
       )
       .catch((err) => console.error(err));
+
+    getConversationDocuments(id)
+      .then((docs) => setDocuments(docs))
+      .catch((err) => console.error("Failed to load documents for chat:", err));
   };
 
   const deleteChat = (id: string, e?: React.MouseEvent): void => {
@@ -177,6 +196,8 @@ export default function useChatManager(): ChatManager {
         },
       ]);
       setActiveChatId(defaultId);
+      setDocuments([]);
+      setPendingUploads([]);
       saveConversation(defaultId, "New Chat").catch((err) =>
         console.error(err),
       );
@@ -185,8 +206,10 @@ export default function useChatManager(): ChatManager {
       if (activeChatId === id) {
         const nextId = remainingChats[0].id;
         setActiveChatId(nextId);
+        setDocuments([]);
+        setPendingUploads([]);
         getConversation(nextId)
-          .then((detail) =>
+          .then((detail) => {
             setChats((prev) =>
               syncConversationState(
                 prev,
@@ -194,8 +217,10 @@ export default function useChatManager(): ChatManager {
                 detail.Title,
                 detail.Messages,
               ),
-            ),
-          )
+            );
+            return getConversationDocuments(nextId);
+          })
+          .then((docs) => setDocuments(docs))
           .catch((err) => console.error(err));
       }
     }
@@ -279,6 +304,45 @@ export default function useChatManager(): ChatManager {
     }
   };
 
+  const uploadFile = async (file: File): Promise<void> => {
+    const targetChatId = activeChatId;
+    if (!targetChatId) return;
+
+    const tempId = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 15);
+
+    const pendingDoc: PendingDocument = {
+      tempId,
+      fileName: file.name,
+      size: file.size,
+      contentType: file.type,
+      status: "uploading",
+    };
+
+    setPendingUploads((prev) => [...prev, pendingDoc]);
+
+    try {
+      const docRecord = await uploadDocument(targetChatId, file);
+      setPendingUploads((prev) => prev.filter((d) => d.tempId !== tempId));
+      setDocuments((prev) => [...prev, docRecord]);
+    } catch (err) {
+      console.error("Upload error:", err);
+      setPendingUploads((prev) =>
+        prev.map((d) => (d.tempId === tempId ? { ...d, status: "error" } : d))
+      );
+    }
+  };
+
+  const deleteFile = async (id: string): Promise<void> => {
+    try {
+      await deleteDocument(id);
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      console.error("Failed to delete document:", err);
+    }
+  };
+
   return {
     chats,
     activeChatId,
@@ -289,10 +353,14 @@ export default function useChatManager(): ChatManager {
     setInput,
     isOnline,
     isLoaded,
+    documents,
+    pendingUploads,
     sendMessage,
     createNewChat,
     selectChat,
     deleteChat,
+    uploadFile,
+    deleteFile,
   };
 }
 
