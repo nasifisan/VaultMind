@@ -15,4 +15,5 @@ public interface IStorageService
     /// <param name="contentType">The MIME content type of the file.</param>
     /// <returns>The storage access URL of the uploaded object.</returns>
     Task<string> UploadFileAsync(Guid fileId, string fileName, Stream fileStream, string contentType);
+    Task<string> GetSignedUrlAsync(string storageUrl, TimeSpan expiry);
 }

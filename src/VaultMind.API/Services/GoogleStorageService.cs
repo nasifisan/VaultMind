@@ -8,6 +8,7 @@ public class GoogleStorageService : IStorageService
 {
     private readonly StorageClient _storageClient;
     private readonly string _bucketName;
+    private readonly UrlSigner? _urlSigner;
 
     public GoogleStorageService(IConfiguration configuration)
     {
@@ -22,6 +23,13 @@ public class GoogleStorageService : IStorageService
             var credential = GoogleCredential.FromStream(stream);
 #pragma warning restore CS0618
             _storageClient = StorageClient.Create(credential);
+
+            // Unwrap to ServiceAccountCredential for URL signing
+            var serviceCredential = credential.UnderlyingCredential as ServiceAccountCredential;
+            if (serviceCredential != null)
+            {
+                _urlSigner = UrlSigner.FromCredential(serviceCredential);
+            }
         }
         else
         {
@@ -42,7 +50,17 @@ public class GoogleStorageService : IStorageService
             source: fileStream
         );
 
-        // Return the canonical GCS public/authenticated URL representation of the uploaded object
+        // Return the canonical GCS URL representation of the uploaded object
         return $"https://storage.googleapis.com/{_bucketName}/{objectName}";
+    }
+
+    public async Task<string> GetSignedUrlAsync(string storageUrl, TimeSpan expiry)
+    {
+        if (_urlSigner == null)
+            return storageUrl; // Fallback: return raw URL if no service account key available
+
+        var objectName = storageUrl.Split($"{_bucketName}/")[1];
+        var signedUrl = await _urlSigner.SignAsync(_bucketName, objectName, expiry);
+        return signedUrl;
     }
 }

@@ -12,7 +12,12 @@ import {
   deleteDocument,
 } from "../services/chatService.service";
 import { useBackendHealth } from "./useBackendHealth";
-import type { Chat, ChatManager, DocumentRecord, PendingDocument } from "../types";
+import type {
+  Chat,
+  ChatManager,
+  DocumentRecord,
+  PendingDocument,
+} from "../types";
 import { generateGuid } from "@/shared/utils";
 import { ConversationRole } from "@/types/conversation/conversation.contracts";
 
@@ -24,6 +29,16 @@ export default function useChatManager(): ChatManager {
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [pendingUploads, setPendingUploads] = useState<PendingDocument[]>([]);
+
+  useEffect(() => {
+    (documents || []).forEach((item) => {
+      console.log("Documents:", item);
+    });
+
+    (pendingUploads || []).forEach((item) => {
+      console.log("Pending Uploads:", item);
+    });
+  }, [documents, pendingUploads]);
 
   // Monitor API health
   const isOnline = useBackendHealth();
@@ -308,9 +323,10 @@ export default function useChatManager(): ChatManager {
     const targetChatId = activeChatId;
     if (!targetChatId) return;
 
-    const tempId = typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : Math.random().toString(36).substring(2, 15);
+    const tempId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substring(2, 15);
 
     const pendingDoc: PendingDocument = {
       tempId,
@@ -321,6 +337,7 @@ export default function useChatManager(): ChatManager {
     };
 
     setPendingUploads((prev) => [...prev, pendingDoc]);
+    console.log(targetChatId);
 
     try {
       const docRecord = await uploadDocument(targetChatId, file);
@@ -329,7 +346,7 @@ export default function useChatManager(): ChatManager {
     } catch (err) {
       console.error("Upload error:", err);
       setPendingUploads((prev) =>
-        prev.map((d) => (d.tempId === tempId ? { ...d, status: "error" } : d))
+        prev.map((d) => (d.tempId === tempId ? { ...d, status: "error" } : d)),
       );
     }
   };
@@ -337,7 +354,7 @@ export default function useChatManager(): ChatManager {
   const deleteFile = async (id: string): Promise<void> => {
     try {
       await deleteDocument(id);
-      setDocuments((prev) => prev.filter((d) => d.id !== id));
+      setDocuments((prev) => prev.filter((d) => d.Id !== id));
     } catch (err) {
       console.error("Failed to delete document:", err);
     }

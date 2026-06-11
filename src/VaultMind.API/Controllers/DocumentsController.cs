@@ -79,6 +79,11 @@ public class DocumentsController : ControllerBase
     {
         var userId = GetCurrentUserId();
         var records = await _documentsRepo.FindAsync(d => d.ConversationId == conversationId && d.UserId == userId);
+        // Replace raw GCS URLs with time-limited signed URLs
+        foreach (var record in records)
+        {
+            record.StorageUrl = await _storageService.GetSignedUrlAsync(record.StorageUrl, TimeSpan.FromHours(1));
+        }
         return Ok(records);
     }
 
@@ -99,7 +104,29 @@ public class DocumentsController : ControllerBase
             return Forbid();
         }
 
+        record.StorageUrl = await _storageService.GetSignedUrlAsync(record.StorageUrl, TimeSpan.FromHours(1));
+
         return Ok(record);
+    }
+
+    [HttpGet("{id}/download-url")]
+    public async Task<IActionResult> GetDownloadUrl(Guid id)
+    {
+        var userId = GetCurrentUserId();
+        var record = await _documentsRepo.GetByIdAsync(id);
+
+        if (record == null)
+        {
+            return NotFound(new { Error = "Document record not found." });
+        }
+
+        if (record.UserId != userId)
+        {
+            return Forbid();
+        }
+
+        var signedUrl = await _storageService.GetSignedUrlAsync(record.StorageUrl, TimeSpan.FromMinutes(15));
+        return Ok(new { url = signedUrl });
     }
 
     [HttpDelete("{id}")]

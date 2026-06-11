@@ -106,13 +106,13 @@ export default function Home() {
             <div className="max-w-3xl mx-auto mb-3 flex gap-3 overflow-x-auto py-1 px-0.5 scrollbar-thin">
               {documents.map((doc) => (
                 <DocumentCard
-                  key={doc.id}
-                  name={doc.fileName}
-                  size={doc.size}
-                  contentType={doc.contentType}
+                  key={doc.Id}
+                  name={doc.FileName}
+                  size={doc.Size}
+                  contentType={doc.ContentType}
                   status="success"
-                  storageUrl={doc.storageUrl}
-                  onDelete={() => deleteFile(doc.id)}
+                  storageUrl={doc.StorageUrl}
+                  onDelete={() => deleteFile(doc.Id)}
                 />
               ))}
               {pendingUploads.map((pending) => (

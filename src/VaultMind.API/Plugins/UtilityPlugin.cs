@@ -9,7 +9,7 @@ public class UtilityPlugin
     [Description("Gets the current local date and time.")]
     public string GetCurrentTime()
     {
-        return DateTime.Now.ToString("F");
+        return DateTime.Now.ToString();
     }
 
     //[KernelFunction]
