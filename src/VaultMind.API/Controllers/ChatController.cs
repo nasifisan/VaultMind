@@ -112,7 +112,8 @@ public class ChatController : ControllerBase
         {
             Temperature = 0.7,
             MaxTokens = 1000,
-            StopSequences = new List<string> { "User:", "Assistant:", "<|user|>", "<|assistant|>", "<|end|>" }
+            StopSequences = new List<string> { "User:", "Assistant:", "<|user|>", "<|assistant|>", "<|end|>" },
+            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
         };
 
         // --- PRINT THE STRUCTURED CHAT MESSAGES ---
