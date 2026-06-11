@@ -16,6 +16,7 @@ builder.Services.AddSingleton<ISseService, SseService>();
 builder.Services.AddSingleton<IMongoDbContext, MongoDbContext>();
 builder.Services.AddSingleton(typeof(IMongoRepository<>), typeof(MongoRepository<>));
 builder.Services.AddSingleton<IJwtService, JwtService>();
+builder.Services.AddSingleton<IStorageService, GoogleStorageService>();
 builder.Services.AddHostedService<MongoDbInitializer>();
 
 

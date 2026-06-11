@@ -1,0 +1,100 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using VaultMind.API.Interfaces;
+using VaultMind.API.Models;
+
+namespace VaultMind.API.Controllers;
+
+[ApiController]
+[Route("api/documents")]
+[Authorize]
+public class DocumentsController : ControllerBase
+{
+    private readonly IStorageService _storageService;
+    private readonly IMongoRepository<DocumentRecord> _documentsRepo;
+
+    public DocumentsController(
+        IStorageService storageService,
+        IMongoRepository<DocumentRecord> documentsRepo)
+    {
+        _storageService = storageService;
+        _documentsRepo = documentsRepo;
+    }
+
+    [HttpPost("upload")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Upload([FromForm] Guid id, IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { Error = "No file was uploaded." });
+        }
+
+        if (id == Guid.Empty)
+        {
+            return BadRequest(new { Error = "A valid document ID (Guid) must be provided." });
+        }
+
+        var userId = GetCurrentUserId();
+
+        try
+        {
+            string storageUrl;
+            using (var stream = file.OpenReadStream())
+            {
+                storageUrl = await _storageService.UploadFileAsync(id, file.FileName, stream, file.ContentType);
+            }
+
+            // Create a new document metadata record to persist in MongoDB
+            var documentRecord = new DocumentRecord
+            {
+                Id = id,
+                UserId = userId,
+                FileName = file.FileName,
+                StorageUrl = storageUrl,
+                ContentType = file.ContentType,
+                Size = file.Length,
+                UploadedAt = DateTime.UtcNow
+            };
+
+            await _documentsRepo.InsertOneAsync(documentRecord);
+
+            return CreatedAtAction(nameof(GetDocumentById), new { id = documentRecord.Id }, documentRecord);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { Error = $"Failed to upload file to storage: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("{id}")]
+    public async Task<ActionResult<DocumentRecord>> GetDocumentById(Guid id)
+    {
+        var userId = GetCurrentUserId();
+        var record = await _documentsRepo.GetByIdAsync(id);
+
+        if (record == null)
+        {
+            return NotFound(new { Error = "Document record not found." });
+        }
+
+        // Validate ownership of the document
+        if (record.UserId != userId)
+        {
+            return Forbid();
+        }
+
+        return Ok(record);
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userIdClaim, out var userId))
+        {
+            return userId;
+        }
+        return Guid.Empty;
+    }
+}

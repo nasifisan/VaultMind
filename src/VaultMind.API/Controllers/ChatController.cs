@@ -3,6 +3,8 @@ using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using VaultMind.API.Interfaces;
 using VaultMind.API.Models;
 
@@ -63,7 +65,38 @@ public class ChatController : ControllerBase
             }
         }
 
-        // 2. Append the new user message to the conversation history
+        // 2. Load system instructions from skprompt.txt
+        string systemPrompt = "Your name is VaultMind. You are an intelligent document analysis assistant.";
+        try
+        {
+            var promptsPath = Path.Combine(AppContext.BaseDirectory, "Prompts", "ChatPlugin", "VaultMindChat", "skprompt.txt");
+            if (System.IO.File.Exists(promptsPath))
+            {
+                systemPrompt = await System.IO.File.ReadAllTextAsync(promptsPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARNING] Failed to load skprompt.txt: {ex.Message}");
+        }
+
+        var chatHistory = new ChatHistory();
+        chatHistory.AddSystemMessage(systemPrompt);
+
+        // Add prior history from MongoDB database
+        foreach (var msg in conversation.Messages)
+        {
+            if (string.Equals(msg.Role, ConversationRoles.User, StringComparison.OrdinalIgnoreCase))
+            {
+                chatHistory.AddUserMessage(msg.Content);
+            }
+            else
+            {
+                chatHistory.AddAssistantMessage(msg.Content);
+            }
+        }
+
+        // 3. Append the new user message to the conversation history database object
         conversation.Messages.Add(new ConversationMessage
         {
             Role = ConversationRoles.User,
@@ -71,41 +104,38 @@ public class ChatController : ControllerBase
             Timestamp = DateTime.UtcNow
         });
 
-        // 3. Format the preceding conversation history for the prompt context
-        string formattedHistory = "";
-        if (conversation.Messages.Count > 1)
-        {
-            var historyLines = new List<string>();
-            // Build history using all messages prior to the latest message
-            for (int i = 0; i < conversation.Messages.Count - 1; i++)
-            {
-                var msg = conversation.Messages[i];
-                string sender = string.Equals(msg.Role, ConversationRoles.User, StringComparison.OrdinalIgnoreCase) ? ConversationRoles.User : ConversationRoles.Assistant;
-                historyLines.Add($"{sender}: {msg.Content}");
-            }
-            formattedHistory = string.Join("\n", historyLines);
-        }
+        // Add the latest user message to the active ChatHistory
+        chatHistory.AddUserMessage(userMessage);
 
-        // 4. Configure Semantic Kernel execution arguments (settings are loaded from config.json)
-        var arguments = new KernelArguments
+        // 4. Configure execution settings
+        var settings = new OpenAIPromptExecutionSettings
         {
-            { "input", userMessage },
-            { "history", formattedHistory },
-            { "style", "professional, helpful, and concise" }
+            Temperature = 0.7,
+            MaxTokens = 1000,
+            StopSequences = new List<string> { "User:", "Assistant:", "<|user|>", "<|assistant|>", "<|end|>" }
         };
 
-        var chatFunction = _kernel.Plugins["ChatPlugin"]["VaultMindChat"];
-        var responseStream = _kernel.InvokeStreamingAsync<string>(chatFunction, arguments);
+        // --- PRINT THE STRUCTURED CHAT MESSAGES ---
+        Console.WriteLine("\n--- CHAT MESSAGES SENT TO LLM ---");
+        foreach (var message in chatHistory)
+        {
+            Console.WriteLine($"[{message.Role}]: {message.Content}");
+        }
+        Console.WriteLine("---------------------------------\n");
+
+        // 5. Get Streaming completions using IChatCompletionService
+        var chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
+        var responseStream = chatCompletion.GetStreamingChatMessageContentsAsync(chatHistory, settings, _kernel);
 
         var fullResponseBuilder = new StringBuilder();
 
-        // 5. Yield back each token chunk as it is streamed from local LLM
+        // Yield back each token chunk as it is streamed from local LLM
         await foreach (var chunk in responseStream)
         {
-            if (chunk is not null)
+            if (chunk?.Content is not null)
             {
-                fullResponseBuilder.Append(chunk);
-                yield return chunk;
+                fullResponseBuilder.Append(chunk.Content);
+                yield return chunk.Content;
             }
         }
 
