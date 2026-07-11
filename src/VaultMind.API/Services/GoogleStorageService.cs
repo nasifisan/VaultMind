@@ -25,10 +25,28 @@ public class GoogleStorageService : IStorageService
             _storageClient = StorageClient.Create(credential);
 
             // Unwrap to ServiceAccountCredential for URL signing
+            // GoogleCredential wraps the real credential — we must unwrap it
             var serviceCredential = credential.UnderlyingCredential as ServiceAccountCredential;
+            if (serviceCredential == null)
+            {
+                // Try creating a scoped credential first, then unwrap
+                var scoped = credential.CreateScoped();
+                serviceCredential = scoped.UnderlyingCredential as ServiceAccountCredential;
+            }
+
             if (serviceCredential != null)
             {
                 _urlSigner = UrlSigner.FromCredential(serviceCredential);
+            }
+            else
+            {
+                // Last resort: reload from file directly as ServiceAccountCredential
+                using var signerStream = new FileStream(credentialsPath, FileMode.Open, FileAccess.Read);
+                var sac = ServiceAccountCredential.FromServiceAccountData(signerStream);
+                if (sac != null)
+                {
+                    _urlSigner = UrlSigner.FromCredential(sac);
+                }
             }
         }
         else
@@ -59,8 +77,60 @@ public class GoogleStorageService : IStorageService
         if (_urlSigner == null)
             return storageUrl; // Fallback: return raw URL if no service account key available
 
-        var objectName = storageUrl.Split($"{_bucketName}/")[1];
+        var objectName = ExtractObjectName(storageUrl);
         var signedUrl = await _urlSigner.SignAsync(_bucketName, objectName, expiry);
         return signedUrl;
+    }
+
+    public async Task<Stream> DownloadFileAsync(string storageUrl)
+    {
+        var objectName = ExtractObjectName(storageUrl);
+        var memoryStream = new MemoryStream();
+
+        // Use a generous timeout to prevent silent hangs on large files
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        await _storageClient.DownloadObjectAsync(
+            bucket: _bucketName,
+            objectName: objectName,
+            destination: memoryStream,
+            cancellationToken: cts.Token
+        );
+        memoryStream.Position = 0;
+        return memoryStream;
+    }
+
+    /// <summary>
+    /// Extracts the GCS object name from the full storage URL.
+    /// Handles URLs like: https://storage.googleapis.com/bucket-name/object-name
+    /// </summary>
+    private string ExtractObjectName(string storageUrl)
+    {
+        string objectName;
+
+        // Find the bucket name in the URL and take everything after it
+        var bucketPrefix = $"{_bucketName}/";
+        var idx = storageUrl.IndexOf(bucketPrefix, StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            objectName = storageUrl.Substring(idx + bucketPrefix.Length);
+        }
+        else
+        {
+            // Fallback: try URI-based parsing
+            var uri = new Uri(storageUrl);
+            var path = uri.AbsolutePath;
+            if (path.StartsWith($"/{_bucketName}/", StringComparison.OrdinalIgnoreCase))
+            {
+                objectName = path.Substring(_bucketName.Length + 2); // skip /<bucket>/
+            }
+            else
+            {
+                objectName = storageUrl;
+            }
+        }
+
+        // URL-decode the object name (e.g. convert %E0%A6... or %20 back to raw characters)
+        // so that the GCS SDK can locate the actual file
+        return Uri.UnescapeDataString(objectName);
     }
 }

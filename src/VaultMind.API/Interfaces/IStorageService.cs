@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
-
 namespace VaultMind.API.Interfaces;
 
 public interface IStorageService
@@ -16,4 +12,5 @@ public interface IStorageService
     /// <returns>The storage access URL of the uploaded object.</returns>
     Task<string> UploadFileAsync(Guid fileId, string fileName, Stream fileStream, string contentType);
     Task<string> GetSignedUrlAsync(string storageUrl, TimeSpan expiry);
+    Task<Stream> DownloadFileAsync(string storageUrl);
 }

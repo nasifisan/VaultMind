@@ -23,6 +23,8 @@ public class DocumentRecord : IEntity
     public string ContentType { get; set; } = null!;
 
     public long Size { get; set; }
+    
+    public string ProcessingStatus { get; set; } = "Pending";
 
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 }

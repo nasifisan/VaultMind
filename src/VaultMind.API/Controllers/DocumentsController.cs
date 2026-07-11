@@ -13,13 +13,19 @@ public class DocumentsController : ControllerBase
 {
     private readonly IStorageService _storageService;
     private readonly IMongoRepository<DocumentRecord> _documentsRepo;
+    private readonly IIngestionService _ingestionService;
+    private readonly IVectorStoreService _vectorStoreService;
 
     public DocumentsController(
         IStorageService storageService,
-        IMongoRepository<DocumentRecord> documentsRepo)
+        IMongoRepository<DocumentRecord> documentsRepo,
+        IIngestionService ingestionService,
+        IVectorStoreService vectorStoreService)
     {
         _storageService = storageService;
         _documentsRepo = documentsRepo;
+        _ingestionService = ingestionService;
+        _vectorStoreService = vectorStoreService;
     }
 
     [HttpPost("upload")]
@@ -65,6 +71,19 @@ public class DocumentsController : ControllerBase
             };
 
             await _documentsRepo.InsertOneAsync(documentRecord);
+
+            // Trigger fire-and-forget background processing
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _ingestionService.ProcessDocumentAsync(documentRecord);
+                }
+                catch
+                {
+                    // Swallowed: IngestionService has its own internal logging
+                }
+            });
 
             return CreatedAtAction(nameof(GetDocumentById), new { id = documentRecord.Id }, documentRecord);
         }
@@ -145,6 +164,7 @@ public class DocumentsController : ControllerBase
             return Forbid();
         }
 
+        await _vectorStoreService.DeleteDocumentChunksAsync(id, record.ConversationId);
         await _documentsRepo.DeleteByIdAsync(id);
         return NoContent();
     }
