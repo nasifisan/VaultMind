@@ -27,8 +27,14 @@ builder.Services.AddHostedService<MongoDbInitializer>();
 // AI Service initialization ----->
 builder.Services.AddOpenAIChatCompletion(
     modelId: config["AI:ModelId"] ?? "phi3",
-    apiKey: config["AI:ApiKey"] ?? "ollama",           // Ollama doesn't need a real key
-    endpoint: new Uri(config["AI:Endpoint"] ?? "http://localhost:11434/v1")
+    openAIClient: new global::OpenAI.OpenAIClient(
+        new global::System.ClientModel.ApiKeyCredential(config["AI:ApiKey"] ?? "ollama"),
+        new global::OpenAI.OpenAIClientOptions
+        {
+            Endpoint = new Uri(config["AI:Endpoint"] ?? "http://localhost:11434/v1"),
+            NetworkTimeout = TimeSpan.FromMinutes(5)
+        }
+    )
 );
 
 builder.Services.AddOpenAITextEmbeddingGeneration(

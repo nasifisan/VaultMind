@@ -18,15 +18,18 @@ public class ChatController : ControllerBase
     private readonly Kernel _kernel;
     private readonly ISseService _sseService;
     private readonly IMongoRepository<Conversation> _conversationsRepo;
+    private readonly IVectorStoreService _vectorStoreService;
 
     public ChatController(
         Kernel kernel,
         ISseService sseService,
-        IMongoRepository<Conversation> conversationsRepo)
+        IMongoRepository<Conversation> conversationsRepo,
+        IVectorStoreService vectorStoreService)
     {
         _kernel = kernel;
         _sseService = sseService;
         _conversationsRepo = conversationsRepo;
+        _vectorStoreService = vectorStoreService;
     }
 
     [HttpPost]
@@ -84,7 +87,8 @@ public class ChatController : ControllerBase
         chatHistory.AddSystemMessage(systemPrompt);
 
         // Add prior history from MongoDB database
-        foreach (var msg in conversation.Messages)
+        var recentMessages = conversation.Messages.TakeLast(6).ToList();
+        foreach (var msg in recentMessages)
         {
             if (string.Equals(msg.Role, ConversationRoles.User, StringComparison.OrdinalIgnoreCase))
             {
@@ -94,6 +98,29 @@ public class ChatController : ControllerBase
             {
                 chatHistory.AddAssistantMessage(msg.Content);
             }
+        }
+
+        // Perform RAG retrieval to fetch relevant document context
+        try
+        {
+            var retrievedChunks = await _vectorStoreService.SearchAsync(userMessage, conversationId, topK: 3);
+            if (retrievedChunks != null && retrievedChunks.Count > 0)
+            {
+                var contextBuilder = new StringBuilder();
+                contextBuilder.AppendLine("Use the following context from the user's uploaded documents to answer their question. Be factual, grounded, and reference the source filenames when answering.");
+                foreach (var chunk in retrievedChunks)
+                {
+                    contextBuilder.AppendLine($"\n--- START CONTEXT ---");
+                    contextBuilder.AppendLine($"Source Document: {chunk.FileName}");
+                    contextBuilder.AppendLine($"Content:\n{chunk.Content}");
+                    contextBuilder.AppendLine($"--- END CONTEXT ---");
+                }
+                chatHistory.AddSystemMessage(contextBuilder.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARNING] Failed to retrieve document context: {ex.Message}");
         }
 
         // 3. Append the new user message to the conversation history database object
