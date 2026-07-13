@@ -19,17 +19,20 @@ public class ChatController : ControllerBase
     private readonly ISseService _sseService;
     private readonly IMongoRepository<Conversation> _conversationsRepo;
     private readonly IVectorStoreService _vectorStoreService;
+    private readonly IConfiguration _configuration;
 
     public ChatController(
         Kernel kernel,
         ISseService sseService,
         IMongoRepository<Conversation> conversationsRepo,
-        IVectorStoreService vectorStoreService)
+        IVectorStoreService vectorStoreService,
+        IConfiguration configuration)
     {
         _kernel = kernel;
         _sseService = sseService;
         _conversationsRepo = conversationsRepo;
         _vectorStoreService = vectorStoreService;
+        _configuration = configuration;
     }
 
     [HttpPost]
@@ -86,8 +89,12 @@ public class ChatController : ControllerBase
         var chatHistory = new ChatHistory();
         chatHistory.AddSystemMessage(systemPrompt);
 
+        // Read configuration settings for history window and RAG context size
+        var historyWindowSize = _configuration.GetValue<int>("Chat:HistoryWindowSize", 6);
+        var maxRetrievedChunks = _configuration.GetValue<int>("Chat:MaxRetrievedChunks", 5);
+
         // Add prior history from MongoDB database
-        var recentMessages = conversation.Messages.TakeLast(6).ToList();
+        var recentMessages = conversation.Messages.TakeLast(historyWindowSize).ToList();
         foreach (var msg in recentMessages)
         {
             if (string.Equals(msg.Role, ConversationRoles.User, StringComparison.OrdinalIgnoreCase))
@@ -103,7 +110,7 @@ public class ChatController : ControllerBase
         // Perform RAG retrieval to fetch relevant document context
         try
         {
-            var retrievedChunks = await _vectorStoreService.SearchAsync(userMessage, conversationId, topK: 3);
+            var retrievedChunks = await _vectorStoreService.SearchAsync(userMessage, conversationId, topK: maxRetrievedChunks);
             if (retrievedChunks != null && retrievedChunks.Count > 0)
             {
                 var contextBuilder = new StringBuilder();
