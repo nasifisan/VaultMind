@@ -16,14 +16,38 @@ builder.Services.AddSingleton<ISseService, SseService>();
 builder.Services.AddSingleton<IMongoDbContext, MongoDbContext>();
 builder.Services.AddSingleton(typeof(IMongoRepository<>), typeof(MongoRepository<>));
 builder.Services.AddSingleton<IJwtService, JwtService>();
+builder.Services.AddSingleton<IStorageService, GoogleStorageService>();
+builder.Services.AddSingleton<IDocumentParserService, DocumentParserService>();
+builder.Services.AddSingleton<IChunkingService, ChunkingService>();
+builder.Services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();
+builder.Services.AddSingleton<IIngestionService, IngestionService>();
 builder.Services.AddHostedService<MongoDbInitializer>();
+builder.Services.AddMemoryCache();
 
 
 // AI Service initialization ----->
 builder.Services.AddOpenAIChatCompletion(
     modelId: config["AI:ModelId"] ?? "phi3",
-    apiKey: config["AI:ApiKey"] ?? "ollama",           // Ollama doesn't need a real key
-    endpoint: new Uri(config["AI:Endpoint"] ?? "http://localhost:11434/v1")
+    openAIClient: new global::OpenAI.OpenAIClient(
+        new global::System.ClientModel.ApiKeyCredential(config["AI:ApiKey"] ?? "ollama"),
+        new global::OpenAI.OpenAIClientOptions
+        {
+            Endpoint = new Uri(config["AI:Endpoint"] ?? "http://localhost:11434/v1"),
+            NetworkTimeout = TimeSpan.FromMinutes(5)
+        }
+    )
+);
+
+builder.Services.AddOpenAITextEmbeddingGeneration(
+    modelId: config["Embedding:ModelId"] ?? "nomic-embed-text",
+    openAIClient: new global::OpenAI.OpenAIClient(
+        new global::System.ClientModel.ApiKeyCredential(config["Embedding:ApiKey"] ?? "ollama"),
+        new global::OpenAI.OpenAIClientOptions
+        {
+            Endpoint = new Uri(config["Embedding:Endpoint"] ?? "http://localhost:11434/v1"),
+            NetworkTimeout = TimeSpan.FromMinutes(5)
+        }
+    )
 );
 
 builder.Services.AddSingleton(sp =>

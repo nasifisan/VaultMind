@@ -2,7 +2,7 @@
 
 > An AI document intelligence platform powered by local inference, .NET orchestration, and real-time streaming.
 
-**VaultMind** is a full-stack AI chat application that runs entirely on your local machine — no API keys, no cloud costs, no data leaving your computer. It uses [Ollama](https://ollama.com/) for local LLM inference, [Microsoft Semantic Kernel](https://learn.microsoft.com/en-us/semantic-kernel/) for orchestration, and a [Next.js](https://nextjs.org/) dashboard with real-time SSE streaming.
+**VaultMind** is a full-stack AI document intelligence platform that runs on your local machine. It uses [Ollama](https://ollama.com/) for local LLM inference and embeddings, [Microsoft Semantic Kernel](https://learn.microsoft.com/en-us/semantic-kernel/) for orchestration, [Qdrant](https://qdrant.tech/) for vector search, [Google Cloud Storage](https://cloud.google.com/storage) for document storage, and a [Next.js](https://nextjs.org/) dashboard with real-time SSE streaming.
 
 This is a learning project following an [AI System Architect roadmap](#-roadmap--whats-next), progressively building from a streaming chat app to a production-grade document intelligence platform with C++ inference, RAG pipelines, and containerized deployment.
 
@@ -33,38 +33,77 @@ This is a learning project following an [AI System Architect roadmap](#-roadmap-
 
 ---
 
+## ✅ What's Built (Phase 2) — RAG & Document Intelligence
+
+### RAG Pipeline
+- **Document Upload to GCS**: Upload PDF, DOCX, and TXT files via the dashboard. Files are stored in Google Cloud Storage with SHA-256 duplicate detection.
+- **Ingestion Pipeline**: Automatic background processing: GCS Download → Text Extraction → Sentence-Boundary Chunking → Embedding via `nomic-embed-text` → Upsert to Qdrant.
+- **Text Extraction**: Supports PDF (PdfPig), DOCX (OpenXml), and plain text/markdown files.
+- **Semantic Chunking**: Sliding-window chunking with configurable token limits and overlap to preserve context across chunk boundaries.
+- **Vector Search**: Qdrant gRPC-based similarity search retrieves the most relevant document chunks per conversation.
+- **Context Injection**: Retrieved chunks are injected as a system message into the LLM prompt, grounding responses in uploaded document content with source file citations.
+
+### Caching & Cost Optimization
+- **Embedding Cache**: `IMemoryCache` caches query embeddings (30-min TTL) to avoid redundant Ollama calls on repeated queries.
+- **Signed URL Cache**: GCS signed URLs are cached with dynamic TTL (`expiry - 5 min`) to eliminate repeated signing API calls.
+- **Duplicate Document Detection**: SHA-256 hash check prevents re-uploading identical files within the same conversation (returns `409 Conflict`).
+- **Configurable History Windowing**: Chat history window size and RAG retrieval chunk count are configurable via `appsettings.json`.
+
+---
+
 ## 🏗️ Current Architecture
 
 ```
 ┌───────────────────────────────────────────────┐
 │         Next.js 16 Dashboard (App Router)      │
-│    Multi-chat UI · SSE Streaming · Dark Theme  │
+│  Multi-chat UI · Document Upload · SSE Stream  │
 └─────────────────────┬─────────────────────────┘
                       │ HTTP + SSE (with JWT Auth)
 ┌─────────────────────▼─────────────────────────┐
-│            C# .NET 9 Web API (Controllers)    │
-│         Microsoft Semantic Kernel (Kernel)    │
-│       ┌───────────────────┬──────────────────┐│
-│       │  AuthController   │  ChatController  ││
-│       └─────────┬─────────┴────────┬─────────┘│
-└─────────────────┼──────────────────┼──────────┘
-                  │                  │
-      MongoDB     │ JWT/TTL          │ OpenAI API
-   ┌───────────┐◄─┘                  └───► ┌───────────┐
-   │  Local DB │                           │  Ollama   │
-   │ (Docker)  │                           │   phi3    │
-   └───────────┘                           └───────────┘
+│            C# .NET 9 Web API (Controllers)     │
+│         Microsoft Semantic Kernel (Kernel)     │
+│  ┌──────────┬──────────┬──────────────────┐    │
+│  │  Auth    │  Chat    │  Documents       │    │
+│  │Controller│Controller│  Controller      │    │
+│  └────┬─────┴────┬─────┴──────┬───────────┘    │
+│       │          │            │                 │
+│       │   ┌──────▼──────┐  ┌──▼──────────────┐  │
+│       │   │ RAG Context │  │ Ingestion       │  │
+│       │   │ Injection   │  │ Pipeline        │  │
+│       │   └──────┬──────┘  │ Parse→Chunk→    │  │
+│       │          │         │ Embed→Store     │  │
+│       │          │         └──┬──────────────┘  │
+└───────┼──────────┼────────────┼──────────────────┘
+        │          │            │
+   MongoDB     Qdrant     Google Cloud
+  ┌─────────┐ ┌─────────┐  Storage
+  │ Users   │ │ Vectors │ ┌─────────┐
+  │ Convos  │ │ Chunks  │ │ PDFs    │
+  │ Docs    │ │ (gRPC)  │ │ DOCX    │
+  └─────────┘ └─────────┘ └─────────┘
+        │          │
+        └──────┬───┘
+               │
+         ┌─────▼─────┐
+         │  Ollama   │
+         │ llama3.2  │  ← Chat completion
+         │ nomic-    │  ← Embeddings (768-dim)
+         │ embed-text│
+         └───────────┘
 ```
 
 ## 🛠️ Tech Stack
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS v4 | Streaming chat UI with multi-session support |
-| **Backend** | C# .NET 9, Semantic Kernel | API orchestration, SSE streaming |
-| **Database** | MongoDB (local Docker container) | User registry, Access & Refresh token tracking |
-| **LLM** | Ollama + phi3 | Free local inference, no API keys needed |
-| **State** | localStorage | Client-side chat history persistence |
+| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS v4 | Streaming chat UI with document upload |
+| **Backend** | C# .NET 9, Semantic Kernel 1.77 | API orchestration, SSE streaming, RAG pipeline |
+| **Database** | MongoDB (local Docker container) | Users, conversations, document metadata |
+| **Vector DB** | Qdrant (local Docker container) | Semantic search over document embeddings |
+| **Storage** | Google Cloud Storage | Document file storage (PDF, DOCX, TXT) |
+| **LLM** | Ollama + llama3.2 | Free local chat inference |
+| **Embeddings** | Ollama + nomic-embed-text | 768-dimensional text embeddings for RAG |
+| **Caching** | IMemoryCache | Embedding cache, signed URL cache |
 
 ---
 
@@ -77,7 +116,8 @@ VaultMind/
 │   │   ├── Program.cs                # Service registration & middleware
 │   │   ├── Controllers/
 │   │   │   ├── AuthController.cs     # JWT signup, signin, token endpoint
-│   │   │   ├── ChatController.cs     # POST /api/chat (prompt template streaming)
+│   │   │   ├── ChatController.cs     # POST /api/chat (RAG + streaming)
+│   │   │   ├── DocumentsController.cs# Upload, list, delete documents
 │   │   │   └── HealthController.cs   # GET /api/health
 │   │   ├── Plugins/
 │   │   │   └── UtilityPlugin.cs      # Native C# tools (clock, summarize)
@@ -87,10 +127,15 @@ VaultMind/
 │   │   │   ├── JwtService.cs         # JWT token generator
 │   │   │   ├── MongoDbContext.cs     # MongoDB connector context
 │   │   │   ├── MongoRepository.cs    # Generic repository pattern
-│   │   │   └── SseService.cs         # SSE formatting & streaming logic
+│   │   │   ├── SseService.cs         # SSE formatting & streaming logic
+│   │   │   ├── GoogleStorageService.cs # GCS upload, download, signed URLs
+│   │   │   ├── DocumentParserService.cs # PDF, DOCX, TXT text extraction
+│   │   │   ├── ChunkingService.cs    # Sentence-boundary text chunking
+│   │   │   ├── QdrantVectorStoreService.cs # Embedding, upsert, search
+│   │   │   └── IngestionService.cs   # Orchestrates full ingestion pipeline
 │   │   ├── Interfaces/
 │   │   │   └── ...                   # API service contracts
-│   │   └── appsettings.json          # MongoDB & Ollama connection config
+│   │   └── appsettings.json          # MongoDB, Ollama, Qdrant, GCS config
 │   │
 │   ├── vaultmind-dashboard/          # Next.js frontend
 │   │   └── src/
@@ -138,15 +183,19 @@ VaultMind/
 - [Node.js 20+](https://nodejs.org)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [Ollama](https://ollama.com/)
+- A Google Cloud service account JSON key (for GCS document storage)
 
 ### 1. Set Up Local Dependencies (Docker & Ollama)
-Run the provided utility scripts in your PowerShell console to quickly set up your local environment:
 ```powershell
-# Start Docker Desktop and launch the local MongoDB container named 'mongodb' on port 27017
-powershell -ExecutionPolicy Bypass -File .\src\start-mongodb.ps1
+# Start MongoDB (port 27017)
+docker run -d --name mongodb -p 27017:27017 mongo:latest
 
-# Start the Ollama background service and download the 'phi3' model
-powershell -ExecutionPolicy Bypass -File .\src\start-ollama.ps1
+# Start Qdrant vector database (REST: 6333, gRPC: 6334)
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+
+# Pull Ollama models
+ollama pull llama3.2         # Chat completion
+ollama pull nomic-embed-text # Embeddings (768-dim)
 ```
 
 ### 2. Start the Backend API
@@ -173,8 +222,11 @@ The dashboard opens at `http://localhost:3000`.
 | **Ollama over OpenAI API** | Free, private, works offline. Can swap to OpenAI later without changing architecture. |
 | **SSE over WebSockets** | Simpler for unidirectional streaming. The server pushes tokens; the client just reads. |
 | **Semantic Kernel over direct API calls** | Microsoft's orchestration SDK — future-proof for plugins, RAG, and multi-model pipelines. |
-| **Lightweight DbContext** | MongoDB Context exposes only a generic database hook; repository manages collection mappings dynamically. |
-| **Client-Side Interception (`apiFetch`)** | Centralized client-side middleware manages token injection, concurrency locks, and automatic refreshes transparently. |
+| **Qdrant over pgvector** | Purpose-built vector DB with native gRPC, per-collection isolation, and simple Docker deployment. |
+| **nomic-embed-text** | Open-source 768-dim embedding model runs locally on Ollama — zero API cost for RAG. |
+| **Conversation-scoped collections** | Each conversation gets its own Qdrant collection, providing natural document isolation between chats. |
+| **SHA-256 dedup** | Hashing file content before upload prevents duplicate ingestion, saving GCS bandwidth and embedding compute. |
+| **IMemoryCache** | Singleton in-memory cache for embeddings and signed URLs — simple, zero-dependency, thread-safe. |
 | **File-Based Prompts** | Keeps prompt engineering clean and decoupled from C# compilation. |
 
 ---
@@ -186,13 +238,13 @@ VaultMind is being built in phases following a 6-month AI System Architect roadm
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **Phase 1** | Streaming chat app + auth + conversation memory + prompt templates | ✅ Complete |
-| **Phase 2** | RAG pipeline — document upload, embedding, vector search (Qdrant) | 🔜 Next |
-| **Phase 3** | C++ inference engine with ONNX Runtime, .NET interop via P/Invoke | 📋 Planned |
+| **Phase 2** | RAG pipeline — document upload, embedding, vector search, caching | ✅ Complete |
+| **Phase 3** | C++ inference engine with ONNX Runtime, .NET interop via P/Invoke | 🔜 Next |
 | **Phase 4** | Capstone — full platform with Redis caching, metrics dashboard, Docker | 📋 Planned |
 
-### In-Progress / Known Limitations (To Be Fixed in Phase 2)
-- **Local LLM Tool calling** — Since `phi3` on Ollama does not natively support tool calling (HTTP 400), we must adapt custom plugins using context injection (RAG) rather than auto-invocation.
-- **No document ingestion** — The "Document Intelligence" capability requires the Phase 2 RAG pipeline (document upload, chunking, and embedding).
+### Current Limitations
+- **CPU-only inference** — Ollama runs on CPU, so LLM responses on long prompts can take 30-120s. GPU acceleration would provide 10-50x speedup.
+- **No OCR for scanned PDFs** — The PDF parser extracts embedded text only. Scanned/image-based PDFs return empty content.
 
 ---
 

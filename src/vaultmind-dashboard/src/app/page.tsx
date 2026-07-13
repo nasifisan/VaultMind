@@ -8,6 +8,7 @@ import ChatWindow from "../components/ChatWindow";
 import ChatInput from "../components/ChatInput";
 import Footer from "../components/Footer";
 import LoadingScreen from "../components/LoadingScreen";
+import DocumentCard from "../components/DocumentCard";
 import { authService } from "@/services/authService.service";
 
 export default function Home() {
@@ -20,10 +21,14 @@ export default function Home() {
     setInput,
     isOnline,
     isLoaded,
+    documents,
+    pendingUploads,
     sendMessage,
     createNewChat,
     selectChat,
     deleteChat,
+    uploadFile,
+    deleteFile,
   } = useChatManager();
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -33,7 +38,10 @@ export default function Home() {
   useEffect(() => {
     const tokens = authService.getTokens();
     authService.requestToken(tokens?.RefreshToken).catch((err) => {
-      console.warn("Could not auto-initialize or refresh session token on app load.", err);
+      console.warn(
+        "Could not auto-initialize or refresh session token on app load.",
+        err,
+      );
     });
   }, []);
 
@@ -93,6 +101,32 @@ export default function Home() {
 
         {/* Footer Area - input bar and backend info */}
         <div className="border-t border-border bg-surface/50 backdrop-blur-sm px-4 py-4 shrink-0">
+          {/* Active Documents Strip */}
+          {(documents.length > 0 || pendingUploads.length > 0) && (
+            <div className="max-w-3xl mx-auto mb-3 flex gap-3 overflow-x-auto py-1 px-0.5 scrollbar-thin">
+              {documents.map((doc) => (
+                <DocumentCard
+                  key={doc.Id}
+                  name={doc.FileName}
+                  size={doc.Size}
+                  contentType={doc.ContentType}
+                  status="success"
+                  storageUrl={doc.StorageUrl}
+                  onDelete={() => deleteFile(doc.Id)}
+                />
+              ))}
+              {pendingUploads.map((pending) => (
+                <DocumentCard
+                  key={pending.tempId}
+                  name={pending.fileName}
+                  size={pending.size}
+                  contentType={pending.contentType}
+                  status={pending.status}
+                />
+              ))}
+            </div>
+          )}
+
           <ChatInput
             ref={inputRef}
             value={input}
@@ -100,6 +134,7 @@ export default function Home() {
             onSend={sendMessage}
             disabled={isStreaming}
             placeholder="Ask VaultMind anything..."
+            onFileSelect={uploadFile}
           />
           <Footer />
         </div>

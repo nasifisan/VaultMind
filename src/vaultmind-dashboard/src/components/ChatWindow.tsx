@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import ChatMessage from "./ChatMessage";
 import type { ChatWindowProps } from "../types";
 
@@ -10,7 +10,11 @@ const suggestions: string[] = [
   "What is ONNX Runtime?",
 ];
 
-export default function ChatWindow({ messages, isStreaming, onSuggestionClick }: ChatWindowProps) {
+export default function ChatWindow({
+  messages,
+  isStreaming,
+  onSuggestionClick,
+}: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages list changes or streaming content updates
@@ -26,7 +30,9 @@ export default function ChatWindow({ messages, isStreaming, onSuggestionClick }:
             <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 text-accent text-2xl font-bold select-none">
               VM
             </div>
-            <h2 className="text-xl font-semibold select-none">Welcome to VaultMind</h2>
+            <h2 className="text-xl font-semibold select-none">
+              Welcome to VaultMind
+            </h2>
             <p className="text-muted max-w-md select-none">
               Ask me anything. I&apos;m your AI document intelligence assistant,
               powered by streaming inference.

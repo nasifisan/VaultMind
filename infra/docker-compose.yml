@@ -14,7 +14,7 @@ services:
       # - OpenAI__ApiKey=${OPENAI_API_KEY}
     depends_on:
       - redis
-      # - qdrant
+      - qdrant
     networks:
       - vaultmind-net
 
@@ -42,19 +42,20 @@ services:
     networks:
       - vaultmind-net
 
-  # ── Qdrant (Vector Database) — Uncomment in Month 2 ──
-  # qdrant:
-  #   image: qdrant/qdrant:latest
-  #   ports:
-  #     - "6333:6333"
-  #   volumes:
-  #     - qdrant-data:/qdrant/storage
-  #   networks:
-  #     - vaultmind-net
+  # ── Qdrant (Vector Database) ──
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - vaultmind-net
 
 volumes:
   redis-data:
-  # qdrant-data:
+  qdrant-data:
 
 networks:
   vaultmind-net:

@@ -1,7 +1,10 @@
 // ── Chat Domain Types ──
 
+import { ConversationRole } from "./conversation/conversation.contracts";
+import { DocumentRecord, PendingDocument } from "./document/document.contracts";
+
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: ConversationRole;
   content: string;
 }
 
@@ -24,10 +27,14 @@ export interface ChatManager {
   setInput: (value: string) => void;
   isOnline: boolean;
   isLoaded: boolean;
+  documents: DocumentRecord[];
+  pendingUploads: PendingDocument[];
   sendMessage: (messageText?: string) => Promise<void>;
   createNewChat: () => void;
   selectChat: (id: string) => void;
   deleteChat: (id: string, e?: React.MouseEvent) => void;
+  uploadFile: (file: File) => Promise<void>;
+  deleteFile: (id: string) => Promise<void>;
 }
 
 // ── Component Props ──
@@ -46,10 +53,11 @@ export interface ChatInputProps {
   onSend: () => void;
   disabled: boolean;
   placeholder?: string;
+  onFileSelect: (file: File) => void;
 }
 
 export interface ChatMessageProps {
-  role: "user" | "assistant";
+  role: ConversationRole;
   content: string;
   isStreaming: boolean;
   isLast: boolean;
@@ -76,3 +84,4 @@ export interface LoadingScreenProps {
 }
 
 export * from "./auth/auth.contracts";
+export * from "./document/document.contracts";

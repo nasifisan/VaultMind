@@ -1,4 +1,3 @@
-using System;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using VaultMind.API.Interfaces;
@@ -14,7 +13,7 @@ public class RefreshToken : IEntity
     public Guid Token { get; set; } = default!;
 
     [BsonRepresentation(BsonType.String)]
-    public Guid UserId { get; set; } // Can be Guid.Empty for "anonymous"
+    public Guid UserId { get; set; } // The ID of the owner user (registered or guest)
 
     public DateTime ExpiresAt { get; set; } // Targets the TTL index
 
