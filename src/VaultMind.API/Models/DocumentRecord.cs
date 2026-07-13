@@ -26,5 +26,7 @@ public class DocumentRecord : IEntity
     
     public string ProcessingStatus { get; set; } = "Pending";
 
+    public string? ContentHash { get; set; }
+
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 }

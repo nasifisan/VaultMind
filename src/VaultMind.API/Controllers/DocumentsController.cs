@@ -51,6 +51,24 @@ public class DocumentsController : ControllerBase
 
         try
         {
+            // Compute SHA-256 hash of the file stream to detect duplicates
+            string contentHash;
+            using (var stream = file.OpenReadStream())
+            {
+                using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                {
+                    var hashBytes = await sha256.ComputeHashAsync(stream);
+                    contentHash = Convert.ToHexString(hashBytes);
+                }
+            }
+
+            // Check if document with same ContentHash + ConversationId exists in this conversation
+            var existing = await _documentsRepo.FindOneAsync(d => d.ContentHash == contentHash && d.ConversationId == conversationId);
+            if (existing != null)
+            {
+                return Conflict(new { Error = "This file has already been uploaded to this conversation." });
+            }
+
             string storageUrl;
             using (var stream = file.OpenReadStream())
             {
@@ -67,6 +85,7 @@ public class DocumentsController : ControllerBase
                 StorageUrl = storageUrl,
                 ContentType = file.ContentType,
                 Size = file.Length,
+                ContentHash = contentHash,
                 UploadedAt = DateTime.UtcNow
             };
 
