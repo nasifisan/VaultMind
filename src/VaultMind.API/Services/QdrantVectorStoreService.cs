@@ -1,4 +1,5 @@
 using Grpc.Net.Client;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.SemanticKernel.Embeddings;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
@@ -11,15 +12,18 @@ public class QdrantVectorStoreService : IVectorStoreService
 {
     private readonly ITextEmbeddingGenerationService _embeddingService;
     private readonly QdrantClient _qdrantClient;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<QdrantVectorStoreService> _logger;
     private readonly string _collectionPrefix;
 
     public QdrantVectorStoreService(
         ITextEmbeddingGenerationService embeddingService,
         IConfiguration configuration,
+        IMemoryCache mermoryCache,
         ILogger<QdrantVectorStoreService> logger)
     {
         _embeddingService = embeddingService;
+        _cache = mermoryCache;
         _logger = logger;
 
         var qdrantEndpoint = configuration["Qdrant:Endpoint"] ?? "http://localhost:6333";
@@ -117,8 +121,18 @@ public class QdrantVectorStoreService : IVectorStoreService
                 return results;
             }
 
-            // Generate vector embedding for the query
-            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
+            // Generate vector embedding for the query (using cache to avoid redundant LLM/Ollama calls)
+            var cacheKey = $"emb:{query.GetHashCode()}";
+            if (!_cache.TryGetValue(cacheKey, out ReadOnlyMemory<float> queryEmbedding))
+            {
+                _logger.LogInformation("Embedding cache MISS for query");
+                queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
+                _cache.Set(cacheKey, queryEmbedding, TimeSpan.FromMinutes(30));
+            }
+            else
+            {
+                _logger.LogInformation("Embedding cache HIT for query");
+            }
 
             // Execute similarity search
             var searchResult = await _qdrantClient.SearchAsync(

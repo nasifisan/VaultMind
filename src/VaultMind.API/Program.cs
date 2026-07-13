@@ -22,6 +22,7 @@ builder.Services.AddSingleton<IChunkingService, ChunkingService>();
 builder.Services.AddSingleton<IVectorStoreService, QdrantVectorStoreService>();
 builder.Services.AddSingleton<IIngestionService, IngestionService>();
 builder.Services.AddHostedService<MongoDbInitializer>();
+builder.Services.AddMemoryCache();
 
 
 // AI Service initialization ----->

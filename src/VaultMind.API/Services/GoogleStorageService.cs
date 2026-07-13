@@ -1,5 +1,6 @@
 using Google.Apis.Auth.OAuth2;
 using Google.Cloud.Storage.V1;
+using Microsoft.Extensions.Caching.Memory;
 using VaultMind.API.Interfaces;
 
 namespace VaultMind.API.Services;
@@ -7,11 +8,15 @@ namespace VaultMind.API.Services;
 public class GoogleStorageService : IStorageService
 {
     private readonly StorageClient _storageClient;
+    private readonly ILogger<GoogleStorageService> _logger;
+    private readonly IMemoryCache _cache;
     private readonly string _bucketName;
     private readonly UrlSigner? _urlSigner;
 
-    public GoogleStorageService(IConfiguration configuration)
+    public GoogleStorageService(IMemoryCache memoryCache, ILogger<GoogleStorageService> logger, IConfiguration configuration)
     {
+        _logger = logger;
+        _cache = memoryCache;
         _bucketName = configuration["GCS:BucketName"] ?? throw new ArgumentException("GCS BucketName is not configured in settings.");
 
         var credentialsPath = configuration["GCS:CredentialsPath"];
@@ -77,8 +82,22 @@ public class GoogleStorageService : IStorageService
         if (_urlSigner == null)
             return storageUrl; // Fallback: return raw URL if no service account key available
 
-        var objectName = ExtractObjectName(storageUrl);
-        var signedUrl = await _urlSigner.SignAsync(_bucketName, objectName, expiry);
+        var cacheKey = $"signedurl:{storageUrl}";
+
+        if (!_cache.TryGetValue(cacheKey, out string? signedUrl) || signedUrl == null)
+        {
+            _logger.LogInformation("Storage Url cache MISS for query");
+            var objectName = ExtractObjectName(storageUrl);
+            signedUrl = await _urlSigner.SignAsync(_bucketName, objectName, expiry);
+            // Cache for slightly less than the expiry to avoid serving expired URLs
+            var cacheTtl = expiry > TimeSpan.FromMinutes(5) ? expiry - TimeSpan.FromMinutes(5) : expiry;
+            _cache.Set(cacheKey, signedUrl, cacheTtl);
+        }
+        else
+        {
+            _logger.LogInformation("Storage Url cache HIT for query");
+        }
+
         return signedUrl;
     }
 
